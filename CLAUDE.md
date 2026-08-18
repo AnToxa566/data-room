@@ -1,3 +1,13 @@
+# CLAUDE.md
+
+Instructions for this repository live in **[AGENTS.md](./AGENTS.md)** — a single file for
+all coding agents, so guidance never drifts between tools.
+
+@AGENTS.md
+
+Read it before making changes. It points to `ARCHITECTURE.md`, which is binding on any
+decision about structure, dependencies, or domain rules.
+
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->
 
