@@ -49,6 +49,8 @@ optimization — see §5.
 |---|---|---|
 | `apps/web` | `contracts`, `ui` | `database`, `apps/api` |
 | `apps/api` | `contracts`, `database` | `ui`, `apps/web` |
+| `apps/web-e2e` | `apps/web`, `contracts`, `ui` | `database`, `apps/api` |
+| `apps/api-e2e` | `apps/api`, `contracts` | `ui`, `apps/web` |
 | `libs/contracts` | *(nothing in this repo)* | everything |
 | `libs/database` | *(nothing in this repo)* | `contracts`, `ui`, any app |
 | `libs/ui` | *(nothing in this repo)* | `contracts`, `database`, any app |
@@ -60,6 +62,8 @@ config, so a violation fails lint rather than review:
 |---|---|
 | `apps/web` | `type:app`, `scope:web` |
 | `apps/api` | `type:app`, `scope:api` |
+| `apps/web-e2e` | `type:e2e`, `scope:web` |
+| `apps/api-e2e` | `type:e2e`, `scope:api` |
 | `libs/contracts` | `type:contract`, `scope:shared` |
 | `libs/database` | `type:data`, `scope:api` |
 | `libs/ui` | `type:ui`, `scope:web` |

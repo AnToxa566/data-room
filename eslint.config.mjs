@@ -20,11 +20,42 @@ export default [
         'error',
         {
           enforceBuildableLibDependency: true,
-          allow: ['^.*/eslint(\\.base)?\\.config\\.[cm]?[jt]s$'],
+          allow: [],
           depConstraints: [
+            // ---- type: what kind of project may depend on what kind ----
             {
-              sourceTag: '*',
-              onlyDependOnLibsWithTags: ['*'],
+              sourceTag: 'type:app',
+              onlyDependOnLibsWithTags: ['type:contract', 'type:data', 'type:ui'],
+            },
+            {
+              sourceTag: 'type:e2e',
+              onlyDependOnLibsWithTags: ['type:app', 'type:contract', 'type:ui'],
+            },
+            {
+              sourceTag: 'type:contract',
+              onlyDependOnLibsWithTags: [],
+            },
+            {
+              sourceTag: 'type:data',
+              onlyDependOnLibsWithTags: [],
+            },
+            {
+              sourceTag: 'type:ui',
+              onlyDependOnLibsWithTags: [],
+            },
+
+            // ---- scope: which side of the system ----
+            {
+              sourceTag: 'scope:shared',
+              onlyDependOnLibsWithTags: ['scope:shared'],
+            },
+            {
+              sourceTag: 'scope:web',
+              onlyDependOnLibsWithTags: ['scope:web', 'scope:shared'],
+            },
+            {
+              sourceTag: 'scope:api',
+              onlyDependOnLibsWithTags: ['scope:api', 'scope:shared'],
             },
           ],
         },

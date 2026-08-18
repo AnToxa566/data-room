@@ -1,5 +1,9 @@
 {
   "name": "@dataroom/web",
   "version": "0.0.1",
-  "private": true
+  "private": true,
+  "nx": {
+    "projectType": "application",
+    "tags": ["type:app", "scope:web"]
+  }
 }
