@@ -1,0 +1,5 @@
+@import 'tailwindcss';
+
+/* Shared design tokens + shadcn/ui theme (see libs/ui/src/styles.css) — apps/web and
+   libs/ui import the same file so both use identical tokens. */
+@import '@dataroom/ui/styles.css';

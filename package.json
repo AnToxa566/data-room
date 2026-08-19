@@ -2,8 +2,26 @@
   "name": "@dataroom/source",
   "version": "0.0.0",
   "license": "MIT",
-  "scripts": {},
+  "scripts": {
+    "dev": "nx serve @dataroom/api & nx dev @dataroom/web & wait",
+    "dev:api": "nx serve @dataroom/api",
+    "dev:web": "nx dev @dataroom/web",
+    "build": "nx run-many -t build",
+    "build:api": "nx build @dataroom/api",
+    "build:web": "nx build @dataroom/web",
+    "lint": "nx run-many -t lint",
+    "test": "nx run-many -t test",
+    "test:watch": "nx run-many -t test -- --watch",
+    "e2e": "nx run-many -t e2e",
+    "prisma:generate": "nx prisma-generate @dataroom/database",
+    "prisma:migrate:dev": "nx prisma-migrate-dev @dataroom/database",
+    "prisma:migrate:deploy": "nx prisma-migrate-deploy @dataroom/database",
+    "prisma:studio": "prisma studio --config libs/database/prisma.config.ts"
+  },
   "private": true,
+  "engines": {
+    "node": ">=20.19"
+  },
   "devDependencies": {
     "@babel/core": "^7.14.5",
     "@babel/preset-react": "^7.14.5",

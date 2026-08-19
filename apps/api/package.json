@@ -3,7 +3,10 @@
   "version": "0.0.1",
   "private": true,
   "nx": {
-    "tags": ["type:app", "scope:api"],
+    "tags": [
+      "type:app",
+      "scope:api"
+    ],
     "targets": {
       "build": {
         "executor": "nx:run-commands",
@@ -84,6 +87,8 @@
     }
   },
   "dependencies": {
+    "@dataroom/contracts": "0.0.1",
+    "@dataroom/database": "0.0.1",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",

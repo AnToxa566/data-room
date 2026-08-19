@@ -14,4 +14,9 @@ describe('App', () => {
       getAllByText(new RegExp('Welcome @dataroom/web', 'gi')).length > 0,
     ).toBeTruthy();
   });
+
+  it('renders the shadcn Button from @dataroom/ui', () => {
+    const { getByRole } = render(<App />);
+    expect(getByRole('button', { name: /hello data room/i })).toBeTruthy();
+  });
 });

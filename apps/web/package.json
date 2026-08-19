@@ -4,6 +4,17 @@
   "private": true,
   "nx": {
     "projectType": "application",
-    "tags": ["type:app", "scope:web"]
+    "tags": [
+      "type:app",
+      "scope:web"
+    ]
+  },
+  "dependencies": {
+    "@dataroom/contracts": "0.0.1",
+    "@dataroom/ui": "0.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "tailwindcss": "^4.3.3"
   }
 }

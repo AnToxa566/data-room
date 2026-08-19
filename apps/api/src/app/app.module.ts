@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { PrismaModule } from '@dataroom/database';
 
+// Infrastructure only for this iteration — no feature modules yet. Each domain area
+// (data-rooms, folders, files, shares, auth) gets its own module, contract-first, per
+// ARCHITECTURE.md §6.
 @Module({
-  imports: [],
-  controllers: [AppController],
-  providers: [AppService],
+  imports: [PrismaModule],
 })
 export class AppModule {}

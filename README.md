@@ -18,25 +18,25 @@ under an explicit, revocable grant.
 
 ## Live
 
-| | URL |
-|---|---|
+|          | URL   |
+| -------- | ----- |
 | Frontend | _TBD_ |
-| API | _TBD_ |
+| API      | _TBD_ |
 
 ---
 
 ## Tech stack
 
-| Layer | Choice |
-|---|---|
-| Monorepo | Nx, npm |
-| Frontend | React 18, TypeScript, Vite, TanStack Query / Router / Table, Tailwind, shadcn/ui + Radix |
-| Backend | NestJS, TypeScript |
-| API contract | ts-rest + zod — shared, single source of truth for both ends |
-| Database | PostgreSQL (Supabase), Prisma v7 with the `@prisma/adapter-pg` driver adapter |
-| Blob storage | Google Cloud Storage (private bucket, signed URLs) |
-| Auth | Google OAuth 2.0, JWT in an httpOnly cookie |
-| Testing | Vitest (unit), Playwright (e2e), Storybook (components) |
+| Layer        | Choice                                                                                   |
+| ------------ | ---------------------------------------------------------------------------------------- |
+| Monorepo     | Nx, npm                                                                                  |
+| Frontend     | React 18, TypeScript, Vite, TanStack Query / Router / Table, Tailwind, shadcn/ui + Radix |
+| Backend      | NestJS, TypeScript                                                                       |
+| API contract | ts-rest + zod — shared, single source of truth for both ends                             |
+| Database     | PostgreSQL (Supabase), Prisma v7 with the `@prisma/adapter-pg` driver adapter            |
+| Blob storage | Google Cloud Storage (private bucket, signed URLs)                                       |
+| Auth         | Google OAuth 2.0, JWT in an httpOnly cookie                                              |
+| Testing      | Vitest (unit), Playwright (e2e), Storybook (components)                                  |
 
 ---
 
@@ -83,29 +83,36 @@ cp .env.example .env
 
 Fill in the values:
 
-| Variable | What it is | Where to get it |
-|---|---|---|
-| `DATABASE_URL` | **Pooled** Postgres connection (pgBouncer, port 6543) — used at runtime | Supabase → Settings → Database → Connection pooling |
-| `DIRECT_URL` | **Direct** Postgres connection (port 5432) — used by migrations only | Supabase → Settings → Database → Direct connection |
-| `JWT_SECRET` | Signing secret for session tokens | Generate: `openssl rand -base64 32` |
-| `GOOGLE_CLIENT_ID` | OAuth client id | Google Cloud Console → Credentials |
-| `GOOGLE_CLIENT_SECRET` | OAuth client secret | Google Cloud Console → Credentials |
-| `GOOGLE_CALLBACK_URL` | OAuth redirect target | `http://localhost:3000/api/auth/google/callback` locally |
-| `GCS_BUCKET_NAME` | Storage bucket name | Google Cloud Console → Cloud Storage |
-| `GCS_PROJECT_ID` | GCP project id | Google Cloud Console |
-| `GCS_CLIENT_EMAIL` | Service account email | Service account JSON key |
-| `GCS_PRIVATE_KEY` | Service account private key | Service account JSON key (keep the `\n` escapes) |
-| `VITE_API_URL` | API base URL for the SPA | `http://localhost:3000/api` locally |
+| Variable               | What it is                                                              | Where to get it                                          |
+| ---------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------- |
+| `DATABASE_URL`         | **Pooled** Postgres connection (pgBouncer, port 6543) — used at runtime | Supabase → Settings → Database → Connection pooling      |
+| `DIRECT_URL`           | **Direct** Postgres connection (port 5432) — used by migrations only    | Supabase → Settings → Database → Direct connection       |
+| `JWT_SECRET`           | Signing secret for session tokens                                       | Generate: `openssl rand -base64 32`                      |
+| `GOOGLE_CLIENT_ID`     | OAuth client id                                                         | Google Cloud Console → Credentials                       |
+| `GOOGLE_CLIENT_SECRET` | OAuth client secret                                                     | Google Cloud Console → Credentials                       |
+| `GOOGLE_CALLBACK_URL`  | OAuth redirect target                                                   | `http://localhost:3000/api/auth/google/callback` locally |
+| `GCS_BUCKET_NAME`      | Storage bucket name                                                     | Google Cloud Console → Cloud Storage                     |
+| `GCS_PROJECT_ID`       | GCP project id                                                          | Google Cloud Console                                     |
+| `GCS_CLIENT_EMAIL`     | Service account email                                                   | Service account JSON key                                 |
+| `GCS_PRIVATE_KEY`      | Service account private key                                             | Service account JSON key (keep the `\n` escapes)         |
+| `VITE_API_URL`         | API base URL for the SPA                                                | `http://localhost:3000/api` locally                      |
 
 > Two database URLs are not redundant. Migrations cannot run through pgBouncer in
 > transaction mode — it does not support prepared statements or advisory locks.
 > Runtime traffic goes through the pooler; migrations go direct.
+>
+> If `DIRECT_URL` (the `db.<ref>.supabase.co:5432` host) times out with `P1001`, your
+> network most likely has no outbound IPv6 route — that host is IPv6-only unless the
+> project has Supabase's IPv4 add-on. The fix is Supabase's **Session Pooler**: the same
+> host and credentials as `DATABASE_URL`, but port `5432` and without `?pgbouncer=true`.
+> Unlike the transaction-mode pooler (port 6543), session mode supports migrations.
 
 ### 3. Set up the database
 
 ```bash
-npx nx run database:prisma-migrate     # apply migrations (uses DIRECT_URL)
-npx nx run database:prisma-generate    # generate the client — Prisma v7 does not do this automatically
+npx nx run database:prisma-migrate-dev      # create + apply a migration (uses DIRECT_URL)
+npx nx run database:prisma-migrate-deploy   # apply pending migrations, no new one (CI/prod)
+npx nx run database:prisma-generate         # generate the client — Prisma v7 does not do this automatically
 ```
 
 ### 4. Configure bucket CORS
@@ -217,8 +224,8 @@ all structure lives in Postgres. Renaming or moving a file is therefore a pure d
 update with zero storage calls, and name-conflict resolution costs nothing.
 
 **Shares are a single flat table covering both modes.**
-Public links and per-user grants are the same statement — *someone holds role R on
-resource X* — differing only in who "someone" is: a token bearer or a specific user.
+Public links and per-user grants are the same statement — _someone holds role R on
+resource X_ — differing only in who "someone" is: a token bearer or a specific user.
 Keeping `role` on the same row for both modes is what makes the viewer/editor extension
 below a no-op.
 
@@ -229,8 +236,26 @@ Permission checks read only the user id — email is never an access key, becaus
 ownership can change hands and would otherwise transfer access with it.
 
 **Revocation is soft.**
-`revokedAt` rather than a delete. In a due-diligence context, *who had access to what,
-and when* has legal weight, and the UI can distinguish "revoked" from "never existed".
+`revokedAt` rather than a delete. In a due-diligence context, _who had access to what,
+and when_ has legal weight, and the UI can distinguish "revoked" from "never existed".
+
+**File upload is two-phase.**
+`POST /files/upload-url` reserves a `File` row (`status: PENDING`) and returns a signed
+URL; the browser then `PUT`s straight to GCS; `POST /files/:id/complete` records the real
+size/mimeType and flips the row to `READY`. Reserving the row before any bytes move means
+a name conflict (`UNIQUE (folderId, name)`) surfaces as an immediate `409`, not after an
+80&nbsp;MB upload — and file bytes never transit the API, so Cloud Run's request-body
+limit never becomes a product constraint. A client that uploads but never confirms leaves
+a `PENDING` row; those are excluded from listings and size aggregates, and are swept after
+a timeout.
+
+**`BigInt` is serialized globally, once.**
+`File.size` is `BigInt` in Postgres/Prisma — `JSON.stringify` throws on `BigInt` by
+default, and every contract schema types `size` as `z.string()`, never `z.number()`
+(2^53 is not a limit worth inheriting for a document store). Rather than converting at
+every call site, `apps/api/src/bigint-json.ts` teaches `JSON.stringify` how to serialize
+`BigInt` (`BigInt.prototype.toJSON`), imported once for its side effect at the top of
+`main.ts` before the app boots.
 
 Full rationale, including alternatives that were rejected, is in
 [ARCHITECTURE.md](./ARCHITECTURE.md).
@@ -306,12 +331,12 @@ resolution query changes.
 
 ## Deployment
 
-| Component | Target |
-|---|---|
-| `apps/web` | Vercel — static SPA build |
-| `apps/api` | Google Cloud Run — containerized NestJS |
-| Database | Supabase Postgres |
-| Blob storage | Google Cloud Storage (private bucket) |
+| Component    | Target                                  |
+| ------------ | --------------------------------------- |
+| `apps/web`   | Vercel — static SPA build               |
+| `apps/api`   | Google Cloud Run — containerized NestJS |
+| Database     | Supabase Postgres                       |
+| Blob storage | Google Cloud Storage (private bucket)   |
 
 The API sits on Cloud Run rather than a serverless function platform for two reasons:
 NestJS runs unmodified in a container, and the API never proxies file bytes — uploads and
@@ -322,8 +347,8 @@ irrelevant.
 
 ## Documentation
 
-| File | For |
-|---|---|
-| `README.md` | Getting started, data model, scaling |
+| File                                   | For                                                              |
+| -------------------------------------- | ---------------------------------------------------------------- |
+| `README.md`                            | Getting started, data model, scaling                             |
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Design rules, module boundaries, domain invariants, decision log |
-| [`AGENTS.md`](./AGENTS.md) | Operating instructions for AI coding agents |
+| [`AGENTS.md`](./AGENTS.md)             | Operating instructions for AI coding agents                      |

@@ -1,0 +1,146 @@
+// Prisma schema for the Data Room domain model.
+// See ARCHITECTURE.md §4 for the invariants this schema encodes.
+//
+// Prisma v7 notes:
+// - generator provider is `prisma-client` (not the old `prisma-client-js`)
+// - `output` is required; the client is generated into this repo, not node_modules
+// - `moduleFormat = "cjs"` is set explicitly so the generated client is `require()`-able
+//   from apps/api's CommonJS (webpack/tsc) build, even though this package itself is
+//   ESM (`"type": "module"` in libs/database/package.json). See README.md "Design
+//   decisions" for the full ESM/CJS explanation.
+// - datasource has no `url` here — connection strings live in prisma.config.ts
+//   (migrations) and are passed directly to the @prisma/adapter-pg driver adapter at
+//   runtime (PrismaService). See prisma.config.ts and src/lib/prisma.service.ts.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  avatarUrl    String?
+  googleId     String?  @unique
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  ownedDataRooms DataRoom[] @relation("DataRoomOwner")
+  createdShares  Share[]    @relation("ShareCreator")
+  receivedShares Share[]    @relation("ShareGrantee")
+
+  @@map("users")
+}
+
+model DataRoom {
+  id           String   @id @default(uuid())
+  name         String
+  ownerId      String
+  rootFolderId String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  owner      User    @relation("DataRoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  rootFolder Folder? @relation("DataRoomRoot", fields: [rootFolderId], references: [id])
+
+  folders Folder[] @relation("DataRoomFolders")
+  files   File[]
+
+  @@index([ownerId])
+  @@map("data_rooms")
+}
+
+model Folder {
+  id         String   @id @default(uuid())
+  name       String
+  dataRoomId String
+  parentId   String?
+  path       String // materialized path, "/rootId/childId/thisId/", includes own id
+  depth      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  dataRoom DataRoom @relation("DataRoomFolders", fields: [dataRoomId], references: [id], onDelete: Cascade)
+  parent   Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children Folder[] @relation("FolderTree")
+  files    File[]
+
+  rootOf DataRoom? @relation("DataRoomRoot")
+
+  @@unique([parentId, name])
+  @@index([dataRoomId])
+  @@index([path])
+  @@map("folders")
+}
+
+enum FileStatus {
+  PENDING // row reserved, upload to GCS not confirmed yet
+  READY
+}
+
+model File {
+  id         String     @id @default(uuid())
+  name       String
+  dataRoomId String
+  folderId   String
+  size       BigInt     @default(0)
+  mimeType   String
+  storageKey String     @unique
+  status     FileStatus @default(PENDING)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  dataRoom DataRoom @relation(fields: [dataRoomId], references: [id], onDelete: Cascade)
+  folder   Folder   @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@unique([folderId, name])
+  @@index([dataRoomId])
+  @@index([folderId, createdAt])
+  @@map("files")
+}
+
+enum ShareResourceType {
+  DATA_ROOM
+  FOLDER
+  FILE
+}
+
+enum ShareRole {
+  VIEWER
+  EDITOR
+}
+
+model Share {
+  id           String            @id @default(uuid())
+  resourceType ShareResourceType
+  resourceId   String
+  role         ShareRole         @default(VIEWER)
+
+  // exactly one access mode is populated:
+  //   public link    -> linkToken
+  //   direct grant   -> granteeEmail (+ granteeUserId once resolved at login)
+  linkToken     String? @unique
+  granteeEmail  String?
+  granteeUserId String?
+
+  createdById String
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  createdBy   User  @relation("ShareCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  granteeUser User? @relation("ShareGrantee", fields: [granteeUserId], references: [id], onDelete: SetNull)
+
+  @@index([resourceType, resourceId])
+  @@index([granteeUserId])
+  @@index([granteeEmail])
+  @@map("shares")
+}

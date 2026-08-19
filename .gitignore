@@ -55,3 +55,6 @@ test-output
 # Environment files
 .env*
 !.env.example
+
+# Generated Prisma client (libs/database) — regenerate with `nx run @dataroom/database:prisma-generate`
+libs/database/src/generated

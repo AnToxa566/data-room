@@ -1,11 +1,11 @@
-// Uncomment this line to use CSS modules
-// import styles from './app.module.scss';
-import NxWelcome from './nx-welcome';
+import { Button } from '@dataroom/ui';
 
 export function App() {
   return (
     <div>
-      <NxWelcome title="@dataroom/web" />
+      {/* Smoke test: confirms the Tailwind preset + shadcn/ui setup in libs/ui resolves
+          and renders correctly from apps/web. */}
+      <Button>Hello Data Room</Button>
     </div>
   );
 }
