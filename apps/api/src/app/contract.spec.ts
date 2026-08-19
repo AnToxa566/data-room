@@ -13,4 +13,8 @@ describe('@dataroom/contracts', () => {
       'shares',
     ]);
   });
+
+  it('scopes the auth contract to JSON routes only — OAuth redirects are plain Nest controllers', () => {
+    expect(Object.keys(contract.auth)).toEqual(['logout', 'me']);
+  });
 });

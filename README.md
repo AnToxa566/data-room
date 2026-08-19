@@ -88,9 +88,15 @@ Fill in the values:
 | `DATABASE_URL`         | **Pooled** Postgres connection (pgBouncer, port 6543) — used at runtime | Supabase → Settings → Database → Connection pooling      |
 | `DIRECT_URL`           | **Direct** Postgres connection (port 5432) — used by migrations only    | Supabase → Settings → Database → Direct connection       |
 | `JWT_SECRET`           | Signing secret for session tokens                                       | Generate: `openssl rand -base64 32`                      |
+| `JWT_EXPIRES_IN`       | Session token lifetime                                                  | `7d` — see "Authentication" below                        |
 | `GOOGLE_CLIENT_ID`     | OAuth client id                                                         | Google Cloud Console → Credentials                       |
 | `GOOGLE_CLIENT_SECRET` | OAuth client secret                                                     | Google Cloud Console → Credentials                       |
 | `GOOGLE_CALLBACK_URL`  | OAuth redirect target                                                   | `http://localhost:3000/api/auth/google/callback` locally |
+| `WEB_APP_URL`          | SPA origin the API redirects back to after login/error                  | `http://localhost:4200` locally                          |
+| `CORS_ORIGINS`         | Comma-separated allowlist of origins allowed to call the API            | `http://localhost:4200` locally — never a wildcard       |
+| `COOKIE_SECURE`        | Session cookie `Secure` attribute                                       | `false` locally, `true` in production                    |
+| `COOKIE_SAME_SITE`     | Session cookie `SameSite` attribute                                     | `lax` locally, `none` in production (cross-site SPA/API) |
+| `COOKIE_DOMAIN`        | Session cookie `Domain` attribute                                       | Optional — unset locally                                 |
 | `GCS_BUCKET_NAME`      | Storage bucket name                                                     | Google Cloud Console → Cloud Storage                     |
 | `GCS_PROJECT_ID`       | GCP project id                                                          | Google Cloud Console                                     |
 | `GCS_CLIENT_EMAIL`     | Service account email                                                   | Service account JSON key                                 |
@@ -137,6 +143,48 @@ npx nx graph                         # visualize the project graph
 npx nx e2e web-e2e                   # Playwright
 npx nx storybook ui                  # component workshop
 ```
+
+---
+
+## Authentication
+
+Google OAuth 2.0 only — no email/password. The flow:
+
+```
+GET  /api/auth/google            browser → 302 → Google's consent screen
+GET  /api/auth/google/callback   Google → 302 → validates profile, upserts the User,
+                                  resolves pending share invitations, sets the session
+                                  cookie, 302 → WEB_APP_URL (or WEB_APP_URL?error=... on
+                                  denied consent, an unverified email, or a provider
+                                  failure — the API never renders its own error page)
+GET  /api/auth/me                200 + the current user, or 401
+POST /api/auth/logout            clears the cookie, 204, idempotent
+```
+
+The session is a single JWT (`sub`, `email` — no roles or permissions; those are always
+resolved per request from the database), delivered as an **httpOnly cookie**, never in a
+response body or `localStorage`, and never re-issued — there is no refresh token or
+token rotation. This is a documented simplification: a compromised token is valid until
+it expires (7 days by default, `JWT_EXPIRES_IN`).
+
+**Cookie attributes come from config, not hardcoded values**, because the correct
+settings differ by environment:
+
+| Attribute  | Local (`nx serve`)        | Production (cross-site SPA + API)   |
+| ---------- | -------------------------- | ------------------------------------ |
+| `httpOnly` | `true`                     | `true`                               |
+| `secure`   | `false` (`COOKIE_SECURE`)  | `true`                                |
+| `sameSite` | `lax` (`COOKIE_SAME_SITE`) | `none` — required once the SPA and API are on different origins |
+| `path`     | `/`                        | `/`                                  |
+
+Getting `sameSite`/`secure` wrong only fails after deploying to separate origins (the
+browser silently drops the cookie), so it's worth double-checking `COOKIE_SAME_SITE` and
+`COOKIE_SECURE` are actually set to the production values above before shipping — see
+`.env.example`.
+
+**Testing permissioned sharing locally requires two separate Google accounts** — one to
+create a Data Room and share it, a second to receive the invitation and log in as the
+grantee. A single account can't exercise the "shared with me" side of any sharing test.
 
 ---
 

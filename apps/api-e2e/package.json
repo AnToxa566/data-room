@@ -13,15 +13,22 @@
         "outputs": [
           "{projectRoot}/test-output/jest/coverage"
         ],
-        "dependsOn": [
-          "@dataroom/api:build",
-          "@dataroom/api:serve"
-        ],
         "options": {
           "jestConfig": "apps/api-e2e/jest.config.cts",
           "passWithNoTests": true
         }
       }
     }
+  },
+  "dependencies": {
+    "@dataroom/api": "0.0.1",
+    "@dataroom/contracts": "0.0.1"
+  },
+  "devDependencies": {
+    "@nestjs/config": "^4.0.4",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/testing": "^11.0.0",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.2.2"
   }
 }

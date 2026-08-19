@@ -1,47 +1,28 @@
 import { initContract } from '@ts-rest/core';
 import { z } from 'zod';
 
-import { ErrorSchema, SuccessSchema, UserSchema } from './common.js';
+import { ErrorSchema, UserSchema } from './common.js';
 
 const c = initContract();
 
+/**
+ * `GET /auth/google` and `GET /auth/google/callback` are deliberately NOT part of this
+ * contract. Both are full-page browser redirects (302), never JSON responses ts-rest's
+ * fetch client would parse, and the callback's only job is to set a cookie and bounce
+ * the browser to the SPA. They are implemented as plain Nest controllers instead — see
+ * apps/api's AuthController. This is a narrowing of the auth surface, not an omission;
+ * see ARCHITECTURE.md's decision log.
+ */
 export const authContract = c.router({
-  /**
-   * Full-page browser navigation to Google's consent screen — never called via the
-   * ts-rest/fetch client. The 302 response is declared for documentation completeness;
-   * its body is never inspected.
-   */
-  googleLogin: {
-    method: 'GET',
-    path: '/auth/google',
-    responses: {
-      302: z.void(),
-    },
-    summary: 'Redirect to Google OAuth consent screen.',
-  },
-  /**
-   * Google redirects the browser here after consent. Exchanges the code, sets the
-   * session cookie, and redirects again to the SPA. Also browser-navigated only.
-   */
-  googleCallback: {
-    method: 'GET',
-    path: '/auth/google/callback',
-    responses: {
-      302: z.void(),
-      401: ErrorSchema,
-    },
-    summary:
-      'OAuth callback — sets the session cookie and redirects to the SPA.',
-  },
   logout: {
     method: 'POST',
     path: '/auth/logout',
     body: z.void(),
     responses: {
-      200: SuccessSchema,
+      204: z.void(),
       401: ErrorSchema,
     },
-    summary: 'Clear the session cookie.',
+    summary: 'Clear the session cookie. Idempotent.',
   },
   me: {
     method: 'GET',
