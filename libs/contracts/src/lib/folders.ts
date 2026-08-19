@@ -43,6 +43,7 @@ export const FileChildSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
+export type FileChildItem = z.infer<typeof FileChildSchema>;
 export const FolderChildItemSchema = z.discriminatedUnion('kind', [
   FolderChildSchema,
   FileChildSchema,

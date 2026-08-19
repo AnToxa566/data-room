@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { z } from 'zod';
 
-import { PrismaService } from '@dataroom/database';
+import { FileStatus, PrismaService } from '@dataroom/database';
 import type {
   CreateFolderBody,
   FolderChildItem,
@@ -13,14 +13,28 @@ import { AccessControlService } from '../access-control/access-control.service.j
 import { decodeCursor, encodeCursor } from '../common/cursor.util.js';
 import { escapeLikePattern } from '../common/like-escape.util.js';
 import { isUniqueConstraintViolation } from '../common/prisma-error.util.js';
+import { toFileChildDto } from '../files/file.mapper.js';
+import { StorageService } from '../storage/storage.service.js';
 
 import { toFolderChildDto, toFolderDto, toFolderWithBreadcrumbsDto } from './folder.mapper.js';
 import { parsePathIds } from './path.util.js';
 
-const FolderChildCursorSchema = z.object({
-  name: z.string(),
-  id: z.string().uuid(),
-});
+/**
+ * A combined folder+file listing is paginated as one virtual sequence — every folder
+ * (sorted by name, id), then every READY file (sorted by name, id). The cursor's `kind`
+ * says which segment it resumes: `folder`/`file` carry the last returned (name, id) in
+ * that segment; `files-start` is the sentinel for "every folder has been listed, resume
+ * files from the beginning" — needed because a page can end exactly on the last folder,
+ * with nothing yet consumed from the file segment to anchor a (name, id) cursor to. See
+ * AGENTS.md's iteration 4 instructions ("verify with a test that pages through a folder
+ * containing both").
+ */
+const FolderChildCursorSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('folder'), name: z.string(), id: z.string().uuid() }),
+  z.object({ kind: z.literal('files-start') }),
+  z.object({ kind: z.literal('file'), name: z.string(), id: z.string().uuid() }),
+]);
+type FolderChildCursor = z.infer<typeof FolderChildCursorSchema>;
 
 export interface ListFolderChildrenResult {
   items: FolderChildItem[];
@@ -32,6 +46,7 @@ export class FoldersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessControl: AccessControlService,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -106,36 +121,85 @@ export class FoldersService {
     query: { cursor?: string; limit: number },
   ): Promise<ListFolderChildrenResult> {
     await this.accessControl.requireAccess(userId, 'FOLDER', id, 'OWNER');
-    const cursor = query.cursor
+    const cursor: FolderChildCursor | null = query.cursor
       ? decodeCursor(query.cursor, FolderChildCursorSchema)
       : null;
 
-    // Files are iteration 4 — only `kind: 'folder'` rows exist today, but the envelope
-    // shape (and the `kind` discriminant) is final now. See AGENTS.md Part 3.
-    const folders = await this.prisma.folder.findMany({
+    const items: FolderChildItem[] = [];
+
+    // Folders sort before files — skip the folder query entirely once a 'file' or
+    // 'files-start' cursor says that segment is already exhausted.
+    if (cursor === null || cursor.kind === 'folder') {
+      const folders = await this.prisma.folder.findMany({
+        where: {
+          parentId: id,
+          ...(cursor
+            ? {
+                OR: [
+                  { name: { gt: cursor.name } },
+                  { AND: [{ name: cursor.name }, { id: { gt: cursor.id } }] },
+                ],
+              }
+            : {}),
+        },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        take: query.limit + 1,
+      });
+
+      const hasMore = folders.length > query.limit;
+      const page = hasMore ? folders.slice(0, query.limit) : folders;
+      items.push(...page.map(toFolderChildDto));
+
+      if (hasMore) {
+        const last = page.at(-1);
+        if (last) {
+          return {
+            items,
+            nextCursor: encodeCursor({ kind: 'folder', name: last.name, id: last.id }),
+          };
+        }
+      }
+    }
+
+    // Either the folder segment is now fully exhausted (this call or an earlier one), or
+    // we're resuming mid-file-list. Always issue this query — even with zero remaining
+    // budget — so a page that ends exactly on the last folder still learns whether any
+    // file exists, rather than reporting `nextCursor: null` while files go unlisted.
+    const remaining = query.limit - items.length;
+    const fileCursor = cursor?.kind === 'file' ? cursor : null;
+    const files = await this.prisma.file.findMany({
       where: {
-        parentId: id,
-        ...(cursor
+        folderId: id,
+        status: FileStatus.READY,
+        ...(fileCursor
           ? {
               OR: [
-                { name: { gt: cursor.name } },
-                { AND: [{ name: cursor.name }, { id: { gt: cursor.id } }] },
+                { name: { gt: fileCursor.name } },
+                { AND: [{ name: fileCursor.name }, { id: { gt: fileCursor.id } }] },
               ],
             }
           : {}),
       },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
-      take: query.limit + 1,
+      take: remaining + 1,
     });
 
-    const hasMore = folders.length > query.limit;
-    const page = hasMore ? folders.slice(0, query.limit) : folders;
-    const last = page.at(-1);
+    const hasMoreFiles = files.length > remaining;
+    const filePage = hasMoreFiles ? files.slice(0, remaining) : files;
+    items.push(...filePage.map(toFileChildDto));
 
-    return {
-      items: page.map(toFolderChildDto),
-      nextCursor: hasMore && last ? encodeCursor({ name: last.name, id: last.id }) : null,
-    };
+    let nextCursor: string | null = null;
+    if (hasMoreFiles) {
+      const last = filePage.at(-1);
+      // `last` is defined whenever `remaining > 0` (filePage then has `remaining` items).
+      // When `remaining === 0`, filePage is empty but a file still exists beyond this
+      // page — resume from the very start of the file segment next time.
+      nextCursor = last
+        ? encodeCursor({ kind: 'file', name: last.name, id: last.id })
+        : encodeCursor({ kind: 'files-start' });
+    }
+
+    return { items, nextCursor };
   }
 
   async stats(userId: string, id: string): Promise<FolderStats> {
@@ -145,20 +209,27 @@ export class FoldersService {
     // Prefix range over the materialized path, not recursion — see ARCHITECTURE.md
     // "How it scales". `path` is left-anchored and indexed, so this is an index scan.
     // The folder's own row matches its own path with the `%` consuming nothing, so it's
-    // included in the count, per AGENTS.md Part 3 ("including the folder itself").
+    // included in the count, per AGENTS.md Part 3 ("including the folder itself"). One
+    // round trip for all three aggregates, so they reflect the same snapshot.
     const pattern = `${escapeLikePattern(folder.path)}%`;
-    const rows = await this.prisma.$queryRaw<{ folder_count: bigint }[]>`
-      SELECT COUNT(*)::bigint AS folder_count FROM folders WHERE path LIKE ${pattern}
+    const rows = await this.prisma.$queryRaw<
+      { folder_count: bigint; file_count: bigint; total_size: bigint }[]
+    >`
+      SELECT
+        (SELECT COUNT(*)::bigint FROM folders WHERE path LIKE ${pattern}) AS folder_count,
+        (SELECT COUNT(*)::bigint FROM files f
+           JOIN folders d ON d.id = f."folderId"
+           WHERE d.path LIKE ${pattern} AND f.status = 'READY') AS file_count,
+        (SELECT COALESCE(SUM(f.size), 0)::bigint FROM files f
+           JOIN folders d ON d.id = f."folderId"
+           WHERE d.path LIKE ${pattern} AND f.status = 'READY') AS total_size
     `;
-    const folderCount = Number(rows[0]?.folder_count ?? 0n);
+    const row = rows[0];
 
     return {
-      // TODO(iteration 4): sum File.size (status = READY) over the same path prefix,
-      // joined through folders — see README.md "How it scales". The query above is
-      // already shaped so adding that join doesn't change this endpoint's response.
-      totalSize: '0',
-      fileCount: 0,
-      folderCount,
+      totalSize: (row?.total_size ?? 0n).toString(),
+      fileCount: Number(row?.file_count ?? 0n),
+      folderCount: Number(row?.folder_count ?? 0n),
     };
   }
 
@@ -194,13 +265,24 @@ export class FoldersService {
       );
     }
 
+    // Collected *before* the delete — once the folder (and its FK-cascaded subtree) is
+    // gone, there is nothing left to query. See ARCHITECTURE.md §5.
+    const pattern = `${escapeLikePattern(folder.path)}%`;
+    const subtreeFiles = await this.prisma.$queryRaw<{ storageKey: string }[]>`
+      SELECT f."storageKey" AS "storageKey" FROM files f
+      JOIN folders d ON d.id = f."folderId"
+      WHERE d.path LIKE ${pattern}
+    `;
+
     // Cascades to the entire subtree — folders and files — via the FK constraints
     // already in the schema. Deliberately not deleting children by hand.
-    //
-    // TODO(iteration 4): files in this subtree still have blobs in GCS. Deleting the
-    // rows here doesn't delete the objects — storage cleanup is out of scope for this
-    // iteration.
     await this.prisma.folder.delete({ where: { id } });
+
+    // Storage cleanup after the transaction commits — database-before-storage ordering,
+    // see ARCHITECTURE.md §5. Individual deletes, not a prefix delete: a file's
+    // storageKey is `datarooms/{dataRoomId}/{fileId}` (flat, not nested by folder), so
+    // there's no folder-scoped prefix to delete by — contrast DataRoomsService.delete.
+    await Promise.all(subtreeFiles.map((file) => this.storage.deleteObject(file.storageKey)));
   }
 
   private async findOrThrow(id: string) {

@@ -10,6 +10,8 @@ import type {
 
 import { AccessControlService } from '../access-control/access-control.service.js';
 import { decodeCursor, encodeCursor } from '../common/cursor.util.js';
+import { dataRoomStoragePrefix } from '../files/storage-key.util.js';
+import { StorageService } from '../storage/storage.service.js';
 
 import { toDataRoomDto, toDataRoomListItemDto } from './data-room.mapper.js';
 
@@ -32,6 +34,7 @@ export class DataRoomsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessControl: AccessControlService,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -131,11 +134,14 @@ export class DataRoomsService {
 
     // Cascades to every Folder and File in the room via the FK constraints already in
     // the schema (see ARCHITECTURE.md §4) — deliberately not deleting children by hand.
-    //
-    // TODO(iteration 4): files in this room still have blobs in GCS at this point.
-    // Deleting the rows here doesn't delete the objects — storage cleanup is out of
-    // scope for this iteration.
     await this.prisma.dataRoom.delete({ where: { id } });
+
+    // Storage cleanup after the transaction commits — see ARCHITECTURE.md §5's
+    // database-before-storage ordering. A whole-room delete is a single prefix delete
+    // (unlike a folder delete's per-file cleanup, see FoldersService.delete) because
+    // every file's storageKey lives under `datarooms/{dataRoomId}/` regardless of which
+    // folder it was in.
+    await this.storage.deleteByPrefix(dataRoomStoragePrefix(id));
   }
 
   private async findOrThrow(id: string) {

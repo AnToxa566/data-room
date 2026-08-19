@@ -15,6 +15,12 @@ export type { GoogleProfile, JwtPayload } from './auth/types.js';
 export { AccessControlService } from './access-control/access-control.service.js';
 export type { AccessLevel } from './access-control/access-control.types.js';
 
+// Value export (not `import type`) — apps/api-e2e/src/support/test-app.ts overrides this
+// provider with a jest mock (`.overrideProvider(StorageService)`) so e2e specs never
+// touch real GCS. See AGENTS.md's iteration 4 instructions ("Mock StorageService for
+// e2e; keep signed-URL generation itself in unit tests").
+export { StorageService } from './storage/storage.service.js';
+
 // Pure passthrough — apps/api-e2e may depend on apps/api and contracts, but not
 // directly on libs/database (see the table above and eslint.config.mjs's
 // `@nx/enforce-module-boundaries` depConstraints). Re-exporting here is what lets e2e

@@ -101,6 +101,12 @@ Fill in the values:
 | `GCS_PROJECT_ID`       | GCP project id                                                          | Google Cloud Console                                     |
 | `GCS_CLIENT_EMAIL`     | Service account email                                                   | Service account JSON key                                 |
 | `GCS_PRIVATE_KEY`      | Service account private key                                             | Service account JSON key (keep the `\n` escapes)         |
+| `MAX_FILE_SIZE_BYTES`  | Largest upload accepted, checked before the upload starts               | Default `104857600` (100 MB)                             |
+| `ALLOWED_MIME_TYPES`   | Comma-separated allowlist for `mimeType`                                | Default `application/pdf`                                |
+| `UPLOAD_URL_TTL_MINUTES`   | How long a signed upload URL stays valid                            | Default `15`                                              |
+| `DOWNLOAD_URL_TTL_MINUTES` | How long a signed download/view URL stays valid                     | Default `15`                                              |
+| `PENDING_TTL_MINUTES`  | Age at which an unconfirmed upload is considered abandoned              | Default `60`                                              |
+| `PENDING_SWEEP_INTERVAL_MINUTES` | How often the abandoned-upload sweep runs                     | Default `15` — see "File storage" below                   |
 | `VITE_API_URL`         | API base URL for the SPA                                                | `http://localhost:3000/api` locally                      |
 
 > Two database URLs are not redundant. Migrations cannot run through pgBouncer in
@@ -125,7 +131,8 @@ npx nx run database:prisma-generate         # generate the client — Prisma v7 
 
 The browser uploads directly to GCS via signed URLs, so the bucket must accept
 cross-origin `PUT` requests from the frontend origin. See
-[ARCHITECTURE.md](./ARCHITECTURE.md#file-upload-two-phase-with-signed-urls).
+[ARCHITECTURE.md](./ARCHITECTURE.md#file-upload-two-phase-with-signed-urls) and "File
+storage" below for the exact CORS JSON.
 
 ### 5. Run
 
@@ -185,6 +192,75 @@ browser silently drops the cookie), so it's worth double-checking `COOKIE_SAME_S
 **Testing permissioned sharing locally requires two separate Google accounts** — one to
 create a Data Room and share it, a second to receive the invitation and log in as the
 grantee. A single account can't exercise the "shared with me" side of any sharing test.
+
+---
+
+## File storage
+
+File bytes never pass through the API — the browser talks to Google Cloud Storage
+directly, over signed URLs the API issues. See
+[ARCHITECTURE.md §5](./ARCHITECTURE.md#file-upload-two-phase-with-signed-urls) for the
+full rationale; this section is the operational summary.
+
+### The two-phase flow
+
+```
+1. POST /api/files/upload-url    -> validates, reserves a PENDING File row, returns
+                                     { fileId, uploadUrl, expiresAt }
+2. PUT  <uploadUrl>               -> the browser uploads straight to GCS with
+                                     Content-Type set to exactly the declared mimeType
+                                     (it's part of the signature — a mismatched header
+                                     is rejected by GCS with 403)
+3. POST /api/files/:id/complete  -> the API reads the object's real size and content
+                                     type back from GCS and flips PENDING -> READY
+```
+
+`size` in step 1 is advisory only (used to reject an oversized upload before it starts,
+`413`) — it is never persisted. The row's real `size`/`mimeType` always come from GCS in
+step 3, never from anything the client claims. `GET /api/files/:id/download-url` is the
+read-side equivalent: a signed GET URL with the response forced to `inline` disposition,
+so the browser renders a PDF instead of downloading it.
+
+### Bucket CORS
+
+The bucket is private, and the browser calls it cross-origin (from `WEB_APP_URL`) for
+both the upload `PUT` and, if the frontend fetches bytes directly rather than navigating
+to the signed URL, the download `GET`. Configure it once per bucket:
+
+```json
+[
+  {
+    "origin": ["http://localhost:4200"],
+    "method": ["PUT", "GET"],
+    "responseHeader": ["Content-Type"],
+    "maxAgeSeconds": 3600
+  }
+]
+```
+
+```bash
+gcloud storage buckets update gs://<GCS_BUCKET_NAME> --cors-file=cors.json
+```
+
+Add every environment's frontend origin (production, staging, …) to `origin` — it is not
+read from `CORS_ORIGINS`; that env var configures the API's own CORS, a separate surface
+from the bucket's.
+
+### Abandoned uploads
+
+A client that requests an upload URL but never calls `complete` (closed the tab,
+cancelled, the PUT failed) leaves a `PENDING` row and, possibly, an orphaned blob.
+`PENDING` rows are invisible to listings and size aggregates regardless, and a periodic
+sweep (`PendingSweepService`, `@nestjs/schedule`) deletes any row still `PENDING` past
+`PENDING_TTL_MINUTES`, along with its blob.
+
+**This sweep is best-effort on Cloud Run.** It runs in-process, on an interval
+(`PENDING_SWEEP_INTERVAL_MINUTES`) — which only ticks while an instance is alive. On
+scale-to-zero, a Data Room with no traffic simply accumulates unswept `PENDING` rows
+until the next request wakes an instance; they still never appear in listings or
+aggregates in the meantime, so this is a storage-hygiene gap, not a correctness one. A
+production deployment would replace it with Cloud Scheduler hitting an authenticated
+sweep endpoint — not built here, a deliberate simplification for this iteration.
 
 ---
 

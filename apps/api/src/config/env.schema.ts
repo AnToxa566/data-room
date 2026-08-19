@@ -5,9 +5,8 @@ import { z } from 'zod';
  * or malformed value fails fast (before the first request) rather than surfacing as a
  * confusing runtime error deep inside a request handler.
  *
- * Deliberately scoped to what THIS app's code actually consumes this iteration — no
- * `GCS_*` vars (storage isn't wired up yet) and no `DIRECT_URL` (migrations-only, read
- * by `libs/database/prisma.config.ts`, never by the running app).
+ * Deliberately scoped to what THIS app's code actually consumes — no `DIRECT_URL`
+ * (migrations-only, read by `libs/database/prisma.config.ts`, never by the running app).
  *
  * No `.default()` on anything security- or session-relevant (cookie attributes, JWT
  * secret/expiry, CORS origins): a missing value should throw at boot, not silently fall
@@ -33,6 +32,20 @@ const commaSeparatedOrigins = z
   )
   .pipe(z.array(z.string().url()).min(1));
 
+/** Comma-separated list, e.g. `application/pdf,image/png` — kept in config rather than
+ * inline in FilesService so the allowlist can be tuned per environment. */
+const commaSeparatedMimeTypes = z
+  .string()
+  .min(1)
+  .default('application/pdf')
+  .transform((value) =>
+    value
+      .split(',')
+      .map((mimeType) => mimeType.trim())
+      .filter(Boolean),
+  )
+  .pipe(z.array(z.string().min(1)).min(1));
+
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -57,6 +70,26 @@ export const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => (value && value.length > 0 ? value : undefined)),
+
+  // Read only by StorageService (apps/api/src/storage) — never imported elsewhere, per
+  // AGENTS.md's iteration 4 instructions. GCS_PRIVATE_KEY keeps its literal `\n` escapes
+  // here; StorageService converts them (see storage/private-key.util.ts) rather than this
+  // schema, so the conversion has its own unit test independent of env parsing.
+  GCS_PROJECT_ID: z.string().min(1, 'GCS_PROJECT_ID is required'),
+  GCS_CLIENT_EMAIL: z.string().min(1, 'GCS_CLIENT_EMAIL is required'),
+  GCS_PRIVATE_KEY: z.string().min(1, 'GCS_PRIVATE_KEY is required'),
+  GCS_BUCKET_NAME: z.string().min(1, 'GCS_BUCKET_NAME is required'),
+
+  MAX_FILE_SIZE_BYTES: z.coerce.number().int().positive().default(104_857_600),
+  ALLOWED_MIME_TYPES: commaSeparatedMimeTypes,
+  UPLOAD_URL_TTL_MINUTES: z.coerce.number().int().positive().default(15),
+  DOWNLOAD_URL_TTL_MINUTES: z.coerce.number().int().positive().default(15),
+  PENDING_TTL_MINUTES: z.coerce.number().int().positive().default(60),
+  // How often the PENDING sweep runs, not the age threshold above — see
+  // pending-sweep.service.ts. Not in AGENTS.md's fixed env-var list, but "make the
+  // interval configurable" (iteration 4 instructions) needs a knob, and every other
+  // interval/TTL in this app is env-driven rather than hardcoded.
+  PENDING_SWEEP_INTERVAL_MINUTES: z.coerce.number().int().positive().default(15),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -1,36 +1,34 @@
 import { initContract } from '@ts-rest/core';
 import { z } from 'zod';
 
-import { ErrorSchema, FileSchema, SuccessSchema } from './common.js';
+import { ErrorSchema, FileSchema } from './common.js';
 
 const c = initContract();
 
 export const CreateUploadUrlBodySchema = z.object({
-  dataRoomId: z.string().uuid(),
   folderId: z.string().uuid(),
   name: z.string().min(1).max(255),
   mimeType: z.string().min(1),
+  // Advisory only — used to reject an oversized upload before it starts. Never
+  // persisted: the real size is read back from GCS in `complete`. See ARCHITECTURE.md §5
+  // and AGENTS.md's iteration 4 instructions ("metadata comes from GCS, never the
+  // client").
+  size: z.number().int().nonnegative(),
 });
 export type CreateUploadUrlBody = z.infer<typeof CreateUploadUrlBodySchema>;
 
 export const CreateUploadUrlResponseSchema = z.object({
   fileId: z.string().uuid(),
   uploadUrl: z.string().url(),
+  expiresAt: z.string().datetime(),
 });
 export type CreateUploadUrlResponse = z.infer<
   typeof CreateUploadUrlResponseSchema
 >;
 
-export const CompleteUploadBodySchema = z.object({
-  // Reported by the browser after the PUT to storage completes — may differ from what
-  // was declared at reservation time (e.g. the browser's sniffed mimeType).
-  size: z.string(),
-  mimeType: z.string().min(1),
-});
-export type CompleteUploadBody = z.infer<typeof CompleteUploadBodySchema>;
-
 export const DownloadUrlResponseSchema = z.object({
-  downloadUrl: z.string().url(),
+  url: z.string().url(),
+  expiresAt: z.string().datetime(),
 });
 export type DownloadUrlResponse = z.infer<typeof DownloadUrlResponseSchema>;
 
@@ -56,20 +54,23 @@ export const filesContract = c.router({
       403: ErrorSchema,
       404: ErrorSchema,
       409: ErrorSchema,
+      413: ErrorSchema,
     },
     summary: 'Reserve a PENDING File row and get a signed upload URL.',
   },
   complete: {
     method: 'POST',
     path: '/files/:id/complete',
-    body: CompleteUploadBodySchema,
+    // No body — metadata (size, contentType) is read back from GCS, never accepted from
+    // the client. See ARCHITECTURE.md §5.
+    body: z.void(),
     responses: {
       200: FileSchema,
+      // Not PENDING (already completed, or the object isn't in GCS yet).
       400: ErrorSchema,
       401: ErrorSchema,
       403: ErrorSchema,
       404: ErrorSchema,
-      409: ErrorSchema,
     },
     summary: 'Confirm the upload landed in storage. PENDING -> READY.',
   },
@@ -89,11 +90,13 @@ export const filesContract = c.router({
     path: '/files/:id/download-url',
     responses: {
       200: DownloadUrlResponseSchema,
+      // File isn't READY yet.
+      400: ErrorSchema,
       401: ErrorSchema,
       403: ErrorSchema,
       404: ErrorSchema,
     },
-    summary: 'Signed, time-limited URL to read the file from storage.',
+    summary: 'Signed, time-limited URL to view the file in the browser (inline).',
   },
   update: {
     method: 'PATCH',
@@ -101,24 +104,27 @@ export const filesContract = c.router({
     body: UpdateFileBodySchema,
     responses: {
       200: FileSchema,
+      // Move target is in a different Data Room.
       400: ErrorSchema,
       401: ErrorSchema,
       403: ErrorSchema,
       404: ErrorSchema,
       409: ErrorSchema,
     },
-    summary: 'Rename and/or move a file.',
+    summary: 'Rename and/or move a file. Never touches storage.',
   },
   delete: {
     method: 'DELETE',
     path: '/files/:id',
     body: z.void(),
     responses: {
-      200: SuccessSchema,
+      // No body — also the cancel path for a PENDING upload. See
+      // auth.ts's `logout` for the identical 204/z.void() pattern.
+      204: z.void(),
       401: ErrorSchema,
       403: ErrorSchema,
       404: ErrorSchema,
     },
-    summary: 'Delete a file.',
+    summary: 'Delete a file (or cancel a PENDING upload).',
   },
 });

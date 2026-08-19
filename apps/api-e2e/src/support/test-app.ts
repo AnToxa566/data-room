@@ -11,7 +11,45 @@ import {
   configureApp,
   GoogleAuthGuard,
   GoogleProfile,
+  StorageService,
 } from '@dataroom/api';
+
+/**
+ * Every `StorageService` method as a jest mock, with defaults that let a request
+ * complete without a test having to stub anything — `getSignedUploadUrl`/
+ * `getSignedDownloadUrl` resolve to a fake URL, `deleteObject`/`deleteByPrefix` resolve to
+ * `undefined`. `getObjectMetadata` defaults to `null` (object absent) deliberately: a
+ * test exercising `complete` must opt in with a real-looking metadata object, so a test
+ * that forgets to do so fails loudly (400) instead of silently succeeding with fabricated
+ * numbers. See AGENTS.md's iteration 4 instructions.
+ */
+export interface MockStorageService {
+  getSignedUploadUrl: jest.Mock;
+  getSignedDownloadUrl: jest.Mock;
+  getObjectMetadata: jest.Mock;
+  deleteObject: jest.Mock;
+  deleteByPrefix: jest.Mock;
+}
+
+function createMockStorageService(): MockStorageService {
+  return {
+    getSignedUploadUrl: jest.fn().mockImplementation((key: string) =>
+      Promise.resolve({
+        url: `https://storage.example.com/upload/${key}`,
+        expiresAt: new Date(Date.now() + 15 * 60_000),
+      }),
+    ),
+    getSignedDownloadUrl: jest.fn().mockImplementation((key: string) =>
+      Promise.resolve({
+        url: `https://storage.example.com/download/${key}`,
+        expiresAt: new Date(Date.now() + 15 * 60_000),
+      }),
+    ),
+    getObjectMetadata: jest.fn().mockResolvedValue(null),
+    deleteObject: jest.fn().mockResolvedValue(undefined),
+    deleteByPrefix: jest.fn().mockResolvedValue(undefined),
+  };
+}
 
 /**
  * Boots the real `AppModule` in-process — no `nx serve`, no live port — and applies the
@@ -31,10 +69,18 @@ export interface TestApp {
   /** Set the profile the next `GET /auth/google/callback` request will receive as
    * `req.user`, as if `GoogleStrategy.validate()` had produced it. */
   setGoogleProfile(profile: GoogleProfile | null): void;
+  /** The mocked `StorageService` — stub a method's return value per-test
+   * (`storage.getObjectMetadata.mockResolvedValueOnce(...)`) or assert it was called
+   * (`expect(storage.deleteObject).toHaveBeenCalledWith(...)`). */
+  storage: MockStorageService;
+  /** Clears call history (not stubbed implementations) on every `storage` mock —
+   * call in `afterEach` so one spec file's assertions never see another test's calls. */
+  resetStorageMocks(): void;
 }
 
 export async function createTestApp(): Promise<TestApp> {
   let currentProfile: GoogleProfile | null = null;
+  const mockStorage = createMockStorageService();
 
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule],
@@ -52,6 +98,11 @@ export async function createTestApp(): Promise<TestApp> {
         return true;
       },
     })
+    // Never touch real GCS in e2e — see AGENTS.md's iteration 4 instructions. Signed-URL
+    // generation itself (the one thing this mock can't exercise) is unit-tested against
+    // the real StorageService in apps/api/src/storage/storage.service.spec.ts.
+    .overrideProvider(StorageService)
+    .useValue(mockStorage)
     .compile();
 
   const app = moduleRef.createNestApplication();
@@ -63,6 +114,10 @@ export async function createTestApp(): Promise<TestApp> {
     moduleRef,
     setGoogleProfile: (profile) => {
       currentProfile = profile;
+    },
+    storage: mockStorage,
+    resetStorageMocks: () => {
+      Object.values(mockStorage).forEach((mockFn) => mockFn.mockClear());
     },
   };
 }

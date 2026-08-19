@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["http://localhost:4200", "https://data-red-room.vercel.app"],
+    "method": ["GET", "PUT", "HEAD"],
+    "responseHeader": ["Content-Type", "Content-Length", "x-goog-resumable"],
+    "maxAgeSeconds": 3600
+  }
+]
