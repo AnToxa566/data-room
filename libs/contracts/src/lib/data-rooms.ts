@@ -34,6 +34,8 @@ export const dataRoomsContract = c.router({
     query: CursorPaginationQuerySchema,
     responses: {
       200: paginated(DataRoomListItemSchema),
+      // Malformed cursor.
+      400: ErrorSchema,
       401: ErrorSchema,
     },
     summary: 'Data Rooms owned by, or shared with, the current user.',

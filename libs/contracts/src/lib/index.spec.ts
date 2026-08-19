@@ -54,21 +54,28 @@ describe('common schemas', () => {
 });
 
 describe('folders.children discriminated union', () => {
-  it('accepts a folder item and a file item, distinguished by "type"', () => {
+  it('accepts a folder item and a file item, distinguished by "kind"', () => {
     const folderItem = {
-      type: 'folder',
+      kind: 'folder' as const,
       id: '11111111-1111-4111-8111-111111111111',
       name: 'Diligence',
-      dataRoomId: '11111111-1111-4111-8111-111111111111',
-      parentId: '11111111-1111-4111-8111-111111111111',
-      path: '/root/child/',
-      depth: 1,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    const fileItem = {
+      kind: 'file' as const,
+      id: '22222222-2222-4222-8222-222222222222',
+      name: 'contract.pdf',
+      size: '12345',
+      mimeType: 'application/pdf',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
     expect(FolderChildItemSchema.safeParse(folderItem).success).toBe(true);
+    expect(FolderChildItemSchema.safeParse(fileItem).success).toBe(true);
     expect(
-      FolderChildItemSchema.safeParse({ ...folderItem, type: 'nope' }).success,
+      FolderChildItemSchema.safeParse({ ...folderItem, kind: 'nope' }).success,
     ).toBe(false);
   });
 });

@@ -130,10 +130,8 @@ security hole.
 - Format: `/rootId/childId/thisId/` — leading and trailing slashes, **includes the
   folder's own id**.
 - `depth` is the number of segments, kept in sync.
-- **Moving a folder rewrites `path` and `depth` for the entire subtree**, in one
-  transaction. There is no operation that changes `parentId` without doing this.
-- A folder may never be moved into its own subtree. Check before writing:
-  the target's `path` must not start with the source's `path`.
+- **`path` is immutable after creation.** Folder move is out of scope (see §9) — nothing
+  in this codebase rewrites a `path` once it's written. `path` and `depth` are set once, in the same transaction as the row's creation, and never touched again.
 
 ### `storageKey` is derived from the file id and is immutable
 
@@ -256,6 +254,9 @@ value in the same commit that introduces it.
 | OAuth routes vs. the ts-rest contract | `GET /auth/google` and `/auth/google/callback` are plain Nest controllers | Model them in `libs/contracts` like every other endpoint | Both are full-page 302 redirects, not JSON responses ts-rest's client parses; forcing them into the contract would either lie about the response shape or contort the contract to accommodate two routes nothing else in the API resembles |
 | Pending-share resolution | Runs on every login, gated on the provider reporting the email verified | Resolve at share-creation time, or trust any claimed email | An unverified email is not proof of ownership — resolving invitations against one would let anyone claim a share addressed to someone else's inbox by typing their address into an OAuth consent screen that never confirmed it |
 | OAuth `state` (CSRF) storage | Short-lived signed cookie, validated in `GoogleAuthGuard` | passport-oauth2's built-in session-backed state store | The built-in store needs `express-session`, which this app deliberately doesn't have (single stateless JWT, no server-side session — see above). A cookie-based nonce is also correct for a multi-instance Cloud Run deployment, where the initiating and callback requests aren't guaranteed to land on the same instance and an in-memory session store would intermittently fail |
+| Authorization | One `AccessControlService`, every service/controller routes through `resolveAccess`/`requireAccess` | Per-module ownership checks (`if (room.ownerId !== userId)` inline in each service) | An inline check is easy to get right once and to forget in the fourth module, and iteration 5's sharing (inherited, strongest-role-wins) has to change every one of them if the check isn't centralized. One service means one place to extend, and a grep for `ownerId` outside it is a real, checkable invariant rather than a convention |
+| Invisible-resource status | `404`, always — a resource a user can't see is indistinguishable from one that doesn't exist | `403` for "exists but not yours" | `403` on a resource id the caller supplied but was never told about *confirms the id is real* — an enumeration/information leak in a due-diligence tool, where the existence of a competing bidder's Data Room is itself sensitive. `403` is reserved for when the caller already provably knows the resource exists (a weaker share hitting a stronger check) — not reachable until iteration 5 adds roles below `OWNER` |
+| Folder delete confirmation | `GET /folders/:id/stats` (folder + file counts, size) called client-side before the delete request | A dedicated `GET /folders/:id/delete-preview` endpoint | `stats` already returns everything a "this will delete N folders and M files" warning needs, computed the same way (path-prefix scan) either endpoint would use. A second endpoint would be the same query with a different name — two things to keep in sync for one piece of information |
 
 ---
 
@@ -269,3 +270,4 @@ Deliberately out of scope. Do not build these without a decision to change scope
 - Audit-log UI (the data supports it; the screen is not built)
 - Multi-tenant organizations or teams above the user level
 - Editor-role write operations (the role exists in the model; enforcement is viewer-only for now)
+- Folder move. The model supports it — a recursive `path`/`depth` rewrite over the subtree, transactionally, with a check that the target isn't inside the source's own subtree — but the spec doesn't require it, and it was left out deliberately rather than half-built. See §4's `path` invariant and the decision log.

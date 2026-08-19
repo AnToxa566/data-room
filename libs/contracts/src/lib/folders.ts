@@ -5,7 +5,6 @@ import {
   BreadcrumbSchema,
   CursorPaginationQuerySchema,
   ErrorSchema,
-  FileSchema,
   FolderSchema,
   SuccessSchema,
   paginated,
@@ -15,18 +14,36 @@ const c = initContract();
 
 export const FolderWithBreadcrumbsSchema = FolderSchema.extend({
   breadcrumbs: z.array(BreadcrumbSchema),
+  // Whether this folder is the root of its Data Room — the root can't be renamed,
+  // moved, or deleted independently, and the UI needs to know that without a second
+  // request. See ARCHITECTURE.md §4.
+  isRoot: z.boolean(),
 });
 export type FolderWithBreadcrumbs = z.infer<typeof FolderWithBreadcrumbsSchema>;
 
 /**
- * One row in a folder's children listing — a folder or a file, tagged with a
- * discriminator so the UI can render both in a single ordered list.
+ * One row in a folder's children listing — a folder or a file, tagged with a `kind`
+ * discriminator so the UI can render both in a single ordered list. Deliberately a
+ * narrower shape than `FolderSchema`/`FileSchema` (no `path`, `dataRoomId`, `status`,
+ * etc.) — a listing row is not the same contract as "fetch this one resource".
  */
-export const FolderChildSchema = FolderSchema.extend({
-  type: z.literal('folder'),
+export const FolderChildSchema = z.object({
+  kind: z.literal('folder'),
+  id: z.string().uuid(),
+  name: z.string(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
 });
-export const FileChildSchema = FileSchema.extend({ type: z.literal('file') });
-export const FolderChildItemSchema = z.discriminatedUnion('type', [
+export const FileChildSchema = z.object({
+  kind: z.literal('file'),
+  id: z.string().uuid(),
+  name: z.string(),
+  size: z.string(),
+  mimeType: z.string(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export const FolderChildItemSchema = z.discriminatedUnion('kind', [
   FolderChildSchema,
   FileChildSchema,
 ]);
@@ -86,6 +103,7 @@ export const foldersContract = c.router({
     query: CursorPaginationQuerySchema,
     responses: {
       200: paginated(FolderChildItemSchema),
+      400: ErrorSchema,
       401: ErrorSchema,
       403: ErrorSchema,
       404: ErrorSchema,
@@ -124,6 +142,8 @@ export const foldersContract = c.router({
     body: z.void(),
     responses: {
       200: SuccessSchema,
+      // The target is a root folder — it can only be deleted with its Data Room.
+      400: ErrorSchema,
       401: ErrorSchema,
       403: ErrorSchema,
       404: ErrorSchema,
