@@ -1,4 +1,19 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(docker --version)",
+      "Bash(docker info *)",
+      "Bash(lsof -iTCP -sTCP:LISTEN -P)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s http://localhost:3000/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:4200/)",
+      "Bash(curl -s http://localhost:4200/)",
+      "Bash(npx --no-install chromium-cli --version)",
+      "Bash(command -v chromium-cli)",
+      "Bash(find / -maxdepth 6 -iname \"*chromium-cli*\")",
+      "Bash(node -e ' *)"
+    ]
+  },
   "enabledPlugins": {
     "nx@nx-claude-plugins": true
   },
@@ -16,11 +31,5 @@
         "www.google-analytics.com"
       ]
     }
-  },
-  "permissions": {
-    "allow": [
-      "Bash(docker --version)",
-      "Bash(docker info *)"
-    ]
   }
 }

@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-@import '@fontsource-variable/geist';
+@import '@fontsource-variable/archivo';
 
 /* Tailwind's automatic content detection walks from the consuming app's Vite root
    (e.g. apps/web), so it never reaches this lib's own source files. Declare them
@@ -12,7 +12,7 @@
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
+  --font-sans: 'Archivo Variable', sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -53,73 +53,106 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Modernist — palette, dividers and radius carried over from the "Data Red Room" design
+   pulled via Claude Design (project "Deliverable format and priority surfaces",
+   Data Red Room.dc.html). A flat, architectural system: near-mono red on a warm off-white,
+   zero corner radius, strong 2px dividers. See libs/ui/src/components/ui/button/button.tsx
+   for how these tokens flow through the CVA variants unchanged. */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --background: #f3f2f2;
+  --foreground: #201e1d;
+  --card: #eae9e9;
+  --card-foreground: #201e1d;
+  --popover: #eae9e9;
+  --popover-foreground: #201e1d;
+  --primary: #ec3013;
+  --primary-foreground: #f8f4f4;
+  --secondary: #eae9e9;
+  --secondary-foreground: #201e1d;
+  --muted: #eae9e9;
+  --muted-foreground: color-mix(in srgb, #201e1d 60%, transparent);
+  --accent: #ec3013;
+  --accent-foreground: #f8f4f4;
+  /* A distinct crimson for error states — deliberately not the brand accent, so a
+     destructive alert never reads as "the same red as the primary action". */
+  --destructive: #8c1233;
+  --border: color-mix(in srgb, #201e1d 40%, transparent);
+  --input: color-mix(in srgb, #201e1d 40%, transparent);
+  --ring: #ec3013;
+  --chart-1: #ec3013;
+  --chart-2: #dd2b0f;
+  --chart-3: #ae1800;
+  --chart-4: #7c1405;
+  --chart-5: #2d2b2b;
+  --radius: 0px;
+  --sidebar: #eae9e9;
+  --sidebar-foreground: #201e1d;
+  --sidebar-primary: #ec3013;
+  --sidebar-primary-foreground: #f8f4f4;
+  --sidebar-accent: #eae9e9;
+  --sidebar-accent-foreground: #201e1d;
+  --sidebar-border: color-mix(in srgb, #201e1d 40%, transparent);
+  --sidebar-ring: #ec3013;
+
+  /* Tonal ramps, carried from the source design system — not yet routed through any
+     component, kept available for hover/pressed states per its usage guidance (light
+     steps for tints, 500 as the role's base, dark steps for text on tinted fills). */
+  --color-neutral-100: #f8f4f4;
+  --color-neutral-200: #eae7e7;
+  --color-neutral-300: #d7d3d3;
+  --color-neutral-400: #bab6b6;
+  --color-neutral-500: #9b9797;
+  --color-neutral-600: #7d7979;
+  --color-neutral-700: #605d5d;
+  --color-neutral-800: #444141;
+  --color-neutral-900: #2d2b2b;
+  --color-accent-100: #fff2ef;
+  --color-accent-200: #ffe0d9;
+  --color-accent-300: #ffc4b8;
+  --color-accent-400: #ff9783;
+  --color-accent-500: #ff563c;
+  --color-accent-600: #dd2b0f;
+  --color-accent-700: #ae1800;
+  --color-accent-800: #7c1405;
+  --color-accent-900: #4d170e;
 }
 
+/* Dark mode isn't wired up anywhere in apps/web today (nothing toggles a `.dark` class) —
+   the source design has no dark variant either. This is an unvalidated placeholder, kept
+   only so the token exists if dark mode is ever built: the neutral ramp inverted, accent
+   and destructive left as-is. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #201e1d;
+  --foreground: #f3f2f2;
+  --card: #2d2b2b;
+  --card-foreground: #f3f2f2;
+  --popover: #2d2b2b;
+  --popover-foreground: #f3f2f2;
+  --primary: #ec3013;
+  --primary-foreground: #f8f4f4;
+  --secondary: #2d2b2b;
+  --secondary-foreground: #f3f2f2;
+  --muted: #2d2b2b;
+  --muted-foreground: color-mix(in srgb, #f3f2f2 60%, transparent);
+  --accent: #ec3013;
+  --accent-foreground: #f8f4f4;
+  --destructive: #f6e6ea;
+  --border: color-mix(in srgb, #f3f2f2 30%, transparent);
+  --input: color-mix(in srgb, #f3f2f2 30%, transparent);
+  --ring: #ec3013;
+  --chart-1: #ec3013;
+  --chart-2: #dd2b0f;
+  --chart-3: #ae1800;
+  --chart-4: #7c1405;
+  --chart-5: #d7d3d3;
+  --sidebar: #2d2b2b;
+  --sidebar-foreground: #f3f2f2;
+  --sidebar-primary: #ec3013;
+  --sidebar-primary-foreground: #f8f4f4;
+  --sidebar-accent: #2d2b2b;
+  --sidebar-accent-foreground: #f3f2f2;
+  --sidebar-border: color-mix(in srgb, #f3f2f2 30%, transparent);
+  --sidebar-ring: #ec3013;
 }
 
 @layer base {

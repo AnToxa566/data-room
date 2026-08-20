@@ -19,11 +19,12 @@ export function Header() {
   const signOut = useSignOut();
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-border px-6 sm:px-8">
+    <header className="flex h-17 items-center justify-between border-b-2 border-border px-6 sm:px-8">
       <Link
         to={auth.status === 'authenticated' ? '/home' : '/'}
-        className="rounded-sm text-sm font-semibold tracking-tight text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="flex items-center gap-2 rounded-sm text-sm font-extrabold tracking-tight text-foreground uppercase outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       >
+        <span aria-hidden="true" className="size-4.5 shrink-0 bg-accent" />
         Data Red Room
       </Link>
 
@@ -42,7 +43,7 @@ export function Header() {
           </DropdownMenuContent>
         </DropdownMenu>
       ) : (
-        <Button size="lg" onClick={signInWithGoogle}>Sign in</Button>
+        <Button variant="outline" onClick={signInWithGoogle}>Sign in</Button>
       )}
     </header>
   );
