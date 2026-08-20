@@ -9,6 +9,7 @@ import { AppConfigModule } from '../config/config.module.js';
 import { DataRoomsModule } from '../data-rooms/data-rooms.module.js';
 import { FilesModule } from '../files/files.module.js';
 import { FoldersModule } from '../folders/folders.module.js';
+import { HealthModule } from '../health/health.module.js';
 import { StorageModule } from '../storage/storage.module.js';
 
 // Each domain area (data-rooms, folders, files, shares) gets its own feature module,
@@ -30,6 +31,7 @@ import { StorageModule } from '../storage/storage.module.js';
     DataRoomsModule,
     FoldersModule,
     FilesModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

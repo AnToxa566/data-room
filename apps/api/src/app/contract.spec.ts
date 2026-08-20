@@ -11,6 +11,7 @@ describe('@dataroom/contracts', () => {
       'folders',
       'files',
       'shares',
+      'health',
     ]);
   });
 

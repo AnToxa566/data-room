@@ -1,0 +1,54 @@
+# apps/api/Dockerfile's build context is the repo root. Docker does NOT read
+# .gitignore — this file needs its own complete exclusion list. Two goals:
+# (1) no secret/credential material ever enters an image layer, (2) keep the context
+# (and Docker's build cache) free of large, host-specific, or irrelevant state.
+#
+# Keep the "credential files" patterns scoped (never a blanket *.json) — package.json,
+# package-lock.json, every workspace's package.json, and tsconfig*.json are required by
+# `npm ci` and the TypeScript build.
+
+# Version control
+.git
+.github
+
+# Installed/build output — reinstalled and regenerated fresh inside the image
+**/node_modules
+**/dist
+**/out-tsc
+**/test-output
+**/coverage
+.nx
+
+# Prisma's generated client — produced fresh by `prisma generate` inside the build
+# stage; a host-generated copy could be stale or built for the wrong platform.
+libs/database/src/generated
+
+# Env files — real values live outside the image (Cloud Run env vars / secrets), never
+# baked in.
+.env*
+
+# Credential files — scoped patterns only. These do NOT catch GCP's actual default
+# service-account key download filename ({project-id}-{random-hex}.json) — the real
+# guarantee against shipping one is structural: with GCS_CLIENT_EMAIL/GCS_PRIVATE_KEY
+# unset, production reads no keyfile at all (see StorageService). Never save a
+# downloaded service-account key file inside this repo; set the two env vars directly
+# in `.env` instead.
+*-key.json
+*.key.json
+*service-account*.json
+*.keyfile.json
+*.pem
+*.p12
+*.pfx
+
+# Editor / OS noise
+.vscode
+.idea
+.DS_Store
+
+# Local Claude Code state — never relevant to a container build
+.claude
+
+# Docs — unread by the build; excluding them stops an unrelated README/ARCHITECTURE
+# edit from invalidating the `COPY . .` layer's cache
+*.md

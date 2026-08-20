@@ -56,17 +56,37 @@ export class StorageService {
 
   constructor(configService: ConfigService<Env, true>) {
     this.bucketName = configService.get('GCS_BUCKET_NAME', { infer: true });
-    this.storage = new Storage({
-      projectId: configService.get('GCS_PROJECT_ID', { infer: true }),
-      credentials: {
-        client_email: configService.get('GCS_CLIENT_EMAIL', { infer: true }),
-        // Escaped `\n`s converted here, not in env.schema.ts — keeps the conversion a
-        // plain, independently unit-testable function. See private-key.util.ts.
-        private_key: normalizePrivateKey(
-          configService.get('GCS_PRIVATE_KEY', { infer: true }),
-        ),
-      },
-    });
+    const projectId = configService.get('GCS_PROJECT_ID', { infer: true });
+    const clientEmail = configService.get('GCS_CLIENT_EMAIL', { infer: true });
+    const privateKey = configService.get('GCS_PRIVATE_KEY', { infer: true });
+
+    // env.schema.ts's superRefine already guarantees these are set together or both
+    // unset, and runs before any provider (including this one) is constructed — this is
+    // a real two-way branch, not a defensive third case.
+    if (clientEmail && privateKey) {
+      this.storage = new Storage({
+        projectId,
+        credentials: {
+          client_email: clientEmail,
+          // Escaped `\n`s converted here, not in env.schema.ts — keeps the conversion a
+          // plain, independently unit-testable function. See private-key.util.ts.
+          private_key: normalizePrivateKey(privateKey),
+        },
+      });
+      this.logger.log(
+        'GCS signing mode: explicit service-account credentials (GCS_CLIENT_EMAIL/GCS_PRIVATE_KEY).',
+      );
+    } else {
+      // No explicit credentials: @google-cloud/storage falls back to Application
+      // Default Credentials and signs URLs via the IAM Credentials API's signBlob,
+      // using the runtime service account's own identity — no private key ever leaves
+      // GCP. Requires that service account to hold `roles/iam.serviceAccountTokenCreator`
+      // on itself. See ARCHITECTURE.md's decision log.
+      this.storage = new Storage({ projectId });
+      this.logger.log(
+        'GCS signing mode: Application Default Credentials via IAM Credentials signBlob (GCS_CLIENT_EMAIL/GCS_PRIVATE_KEY not set).',
+      );
+    }
   }
 
   private file(key: string) {

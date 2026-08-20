@@ -46,7 +46,7 @@ const commaSeparatedMimeTypes = z
   )
   .pipe(z.array(z.string().min(1)).min(1));
 
-export const envSchema = z.object({
+const baseEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
 
@@ -75,9 +75,21 @@ export const envSchema = z.object({
   // AGENTS.md's iteration 4 instructions. GCS_PRIVATE_KEY keeps its literal `\n` escapes
   // here; StorageService converts them (see storage/private-key.util.ts) rather than this
   // schema, so the conversion has its own unit test independent of env parsing.
+  //
+  // GCS_CLIENT_EMAIL/GCS_PRIVATE_KEY are optional: set together, StorageService builds
+  // an explicit-credentials client (local dev, where Application Default Credentials
+  // aren't available); left unset together, it falls back to ADC and signs via the IAM
+  // Credentials API's signBlob (Cloud Run, using the service account's own identity).
+  // Setting exactly one is rejected below — see the superRefine on envSchema.
   GCS_PROJECT_ID: z.string().min(1, 'GCS_PROJECT_ID is required'),
-  GCS_CLIENT_EMAIL: z.string().min(1, 'GCS_CLIENT_EMAIL is required'),
-  GCS_PRIVATE_KEY: z.string().min(1, 'GCS_PRIVATE_KEY is required'),
+  GCS_CLIENT_EMAIL: z
+    .string()
+    .min(1, 'GCS_CLIENT_EMAIL, if set, must be non-empty')
+    .optional(),
+  GCS_PRIVATE_KEY: z
+    .string()
+    .min(1, 'GCS_PRIVATE_KEY, if set, must be non-empty')
+    .optional(),
   GCS_BUCKET_NAME: z.string().min(1, 'GCS_BUCKET_NAME is required'),
 
   MAX_FILE_SIZE_BYTES: z.coerce.number().int().positive().default(104_857_600),
@@ -90,6 +102,28 @@ export const envSchema = z.object({
   // interval configurable" (iteration 4 instructions) needs a knob, and every other
   // interval/TTL in this app is env-driven rather than hardcoded.
   PENDING_SWEEP_INTERVAL_MINUTES: z.coerce.number().int().positive().default(15),
+});
+
+/**
+ * GCS_CLIENT_EMAIL and GCS_PRIVATE_KEY must be set together or both left unset — a
+ * half-configured credential is a misconfiguration, not a fallback. See StorageService.
+ */
+export const envSchema = baseEnvSchema.superRefine((config, ctx) => {
+  // Truthy, not `!== undefined`: GCS_CLIENT_EMAIL="" alone should surface only its own
+  // .min(1) issue above, not also this "exactly one set" issue.
+  const hasClientEmail = Boolean(config.GCS_CLIENT_EMAIL);
+  const hasPrivateKey = Boolean(config.GCS_PRIVATE_KEY);
+  if (hasClientEmail !== hasPrivateKey) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [hasClientEmail ? 'GCS_PRIVATE_KEY' : 'GCS_CLIENT_EMAIL'],
+      message:
+        'GCS_CLIENT_EMAIL and GCS_PRIVATE_KEY must be set together (explicit ' +
+        'service-account credentials — local dev) or both left unset (production — ' +
+        'signs via Application Default Credentials and the IAM Credentials API). ' +
+        'Exactly one is set, which is not a valid configuration.',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

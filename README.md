@@ -81,33 +81,65 @@ npm install
 cp .env.example .env
 ```
 
-Fill in the values:
+Fill in the values. Grouped by whether a variable is needed everywhere, only for local
+development, or set to a different value per environment:
 
-| Variable               | What it is                                                              | Where to get it                                          |
-| ---------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------- |
-| `DATABASE_URL`         | **Pooled** Postgres connection (pgBouncer, port 6543) — used at runtime | Supabase → Settings → Database → Connection pooling      |
-| `DIRECT_URL`           | **Direct** Postgres connection (port 5432) — used by migrations only    | Supabase → Settings → Database → Direct connection       |
-| `JWT_SECRET`           | Signing secret for session tokens                                       | Generate: `openssl rand -base64 32`                      |
-| `JWT_EXPIRES_IN`       | Session token lifetime                                                  | `7d` — see "Authentication" below                        |
-| `GOOGLE_CLIENT_ID`     | OAuth client id                                                         | Google Cloud Console → Credentials                       |
-| `GOOGLE_CLIENT_SECRET` | OAuth client secret                                                     | Google Cloud Console → Credentials                       |
-| `GOOGLE_CALLBACK_URL`  | OAuth redirect target                                                   | `http://localhost:3000/api/auth/google/callback` locally |
-| `WEB_APP_URL`          | SPA origin the API redirects back to after login/error                  | `http://localhost:4200` locally                          |
-| `CORS_ORIGINS`         | Comma-separated allowlist of origins allowed to call the API            | `http://localhost:4200` locally — never a wildcard       |
-| `COOKIE_SECURE`        | Session cookie `Secure` attribute                                       | `false` locally, `true` in production                    |
-| `COOKIE_SAME_SITE`     | Session cookie `SameSite` attribute                                     | `lax` locally, `none` in production (cross-site SPA/API) |
-| `COOKIE_DOMAIN`        | Session cookie `Domain` attribute                                       | Optional — unset locally                                 |
-| `GCS_BUCKET_NAME`      | Storage bucket name                                                     | Google Cloud Console → Cloud Storage                     |
-| `GCS_PROJECT_ID`       | GCP project id                                                          | Google Cloud Console                                     |
-| `GCS_CLIENT_EMAIL`     | Service account email                                                   | Service account JSON key                                 |
-| `GCS_PRIVATE_KEY`      | Service account private key                                             | Service account JSON key (keep the `\n` escapes)         |
-| `MAX_FILE_SIZE_BYTES`  | Largest upload accepted, checked before the upload starts               | Default `104857600` (100 MB)                             |
-| `ALLOWED_MIME_TYPES`   | Comma-separated allowlist for `mimeType`                                | Default `application/pdf`                                |
-| `UPLOAD_URL_TTL_MINUTES`   | How long a signed upload URL stays valid                            | Default `15`                                              |
-| `DOWNLOAD_URL_TTL_MINUTES` | How long a signed download/view URL stays valid                     | Default `15`                                              |
-| `PENDING_TTL_MINUTES`  | Age at which an unconfirmed upload is considered abandoned              | Default `60`                                              |
-| `PENDING_SWEEP_INTERVAL_MINUTES` | How often the abandoned-upload sweep runs                     | Default `15` — see "File storage" below                   |
-| `VITE_API_URL`         | API base URL for the SPA                                                | `http://localhost:3000/api` locally                      |
+**Required everywhere** (local dev, CI, and production)
+
+| Variable               | What it is                                                    | Where to get it                                                                              |
+| ---------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`         | **Pooled** Postgres connection (pgBouncer, port 6543)            | Supabase → Settings → Database → Connection pooling                                           |
+| `JWT_SECRET`           | Signing secret for session tokens                                | Generate: `openssl rand -base64 32`                                                           |
+| `JWT_EXPIRES_IN`       | Session token lifetime — no default, security-relevant          | `7d`                                                                                           |
+| `GOOGLE_CLIENT_ID`     | OAuth client id                                                  | Google Cloud Console → Credentials                                                            |
+| `GOOGLE_CLIENT_SECRET` | OAuth client secret                                              | Google Cloud Console → Credentials                                                            |
+| `GOOGLE_CALLBACK_URL`  | OAuth redirect target                                            | `http://localhost:3000/api/auth/google/callback` locally; the Cloud Run URL + the same path in production |
+| `WEB_APP_URL`          | SPA origin the API redirects back to after login/error          | `http://localhost:4200` locally; the Vercel production URL in production                      |
+| `CORS_ORIGINS`         | Comma-separated allowlist of origins allowed to call the API    | Same as `WEB_APP_URL` — never a wildcard                                                      |
+| `GCS_PROJECT_ID`       | GCP project id                                                   | Google Cloud Console                                                                          |
+| `GCS_BUCKET_NAME`      | Storage bucket name                                              | Google Cloud Console → Cloud Storage                                                          |
+| `API_URL`         | API base URL for the SPA (not yet consumed by any code — reserved for the SPA's API client) | `http://localhost:3000/api` locally; the Cloud Run API URL in production |
+
+**Local only** — never set in production
+
+| Variable           | What it is                                                              | Where to get it                                     |
+| ------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `DIRECT_URL`        | **Direct** Postgres connection (port 5432) — migrations only, run from a dev machine, never read by the running API | Supabase → Settings → Database → Direct connection |
+| `GCS_CLIENT_EMAIL`  | Service account email — explicit credentials, only needed where Application Default Credentials are unavailable | Service account JSON key |
+| `GCS_PRIVATE_KEY`   | Service account private key (keep the `\n` escapes)                     | Service account JSON key |
+
+Leave `GCS_CLIENT_EMAIL`/`GCS_PRIVATE_KEY` **both** unset in production: `StorageService`
+then signs via Application Default Credentials and the IAM Credentials API instead,
+using the deployed service account's own identity — see "Deployment" and
+[ARCHITECTURE.md](./ARCHITECTURE.md)'s decision log. Setting only one of the two fails
+validation at boot (`env.schema.ts`) — a half-configured credential is a
+misconfiguration, not a fallback.
+
+**Differs by environment**
+
+| Variable           | What it is                          | Local (`nx serve`) | Production                              |
+| ------------------- | -------------------------------------- | -------------------- | ------------------------------------------ |
+| `COOKIE_SECURE`     | Session cookie `Secure` attribute      | `false`              | `true`                                     |
+| `COOKIE_SAME_SITE`  | Session cookie `SameSite` attribute    | `lax`                 | `none` — see "Cookies across origins" below |
+| `COOKIE_DOMAIN`     | Session cookie `Domain` attribute      | unset                 | unset (Vercel and Cloud Run share no parent domain) |
+| `PORT`              | Port the API listens on                | `3000`                | injected by Cloud Run — never hardcode     |
+
+> **Cookies across origins.** `COOKIE_SECURE=true` and `COOKIE_SAME_SITE=none` are
+> required in production. The SPA (Vercel) and API (Cloud Run) are different origins;
+> `SameSite=Lax` silently drops the cookie on that cross-site request. Login still
+> *appears* to succeed — the OAuth redirect completes — but the cookie never round-trips
+> back, so every subsequent request 401s.
+
+**Optional** — every one of these has a sensible default (`env.schema.ts`)
+
+| Variable                          | What it is                                                  | Default          |
+| ---------------------------------- | --------------------------------------------------------------- | ------------------ |
+| `MAX_FILE_SIZE_BYTES`              | Largest upload accepted, checked before the upload starts       | `104857600` (100 MB) |
+| `ALLOWED_MIME_TYPES`               | Comma-separated allowlist for `mimeType`                        | `application/pdf` |
+| `UPLOAD_URL_TTL_MINUTES`           | How long a signed upload URL stays valid                        | `15`               |
+| `DOWNLOAD_URL_TTL_MINUTES`         | How long a signed download/view URL stays valid                 | `15`               |
+| `PENDING_TTL_MINUTES`              | Age at which an unconfirmed upload is considered abandoned      | `60`               |
+| `PENDING_SWEEP_INTERVAL_MINUTES`   | How often the abandoned-upload sweep runs — see "File storage" below | `15`          |
 
 > Two database URLs are not redundant. Migrations cannot run through pgBouncer in
 > transaction mode — it does not support prepared statements or advisory locks.
@@ -466,6 +498,52 @@ The API sits on Cloud Run rather than a serverless function platform for two rea
 NestJS runs unmodified in a container, and the API never proxies file bytes — uploads and
 downloads go browser-to-GCS through signed URLs, so platform request-size limits are
 irrelevant.
+
+### Building and running the API container
+
+`apps/api/Dockerfile` is a two-stage build: `build` carries the full Nx/TypeScript/Prisma
+toolchain and is discarded entirely; `runtime` only receives the already-built, already-
+pruned `apps/api/dist` (its own `package.json` + production-only `node_modules`), run as
+the image's non-root `node` user.
+
+```bash
+# --platform is required — Cloud Run does not run arm64 images, and an Apple Silicon
+# build without it produces an image that pushes and deploys fine but fails at container
+# startup with an error that doesn't obviously point at the architecture mismatch.
+docker buildx build --platform linux/amd64 -f apps/api/Dockerfile -t dataroom-api .
+
+docker run --rm -p 8080:8080 -e PORT=8080 \
+  -e DATABASE_URL=... -e JWT_SECRET=... -e JWT_EXPIRES_IN=7d \
+  -e GOOGLE_CLIENT_ID=... -e GOOGLE_CLIENT_SECRET=... -e GOOGLE_CALLBACK_URL=... \
+  -e WEB_APP_URL=... -e CORS_ORIGINS=... \
+  -e GCS_PROJECT_ID=... -e GCS_BUCKET_NAME=... \
+  -e COOKIE_SECURE=true -e COOKIE_SAME_SITE=none \
+  dataroom-api
+
+curl -i localhost:8080/api/health
+```
+
+`GCS_CLIENT_EMAIL`/`GCS_PRIVATE_KEY` are deliberately omitted from that `docker run` —
+in production they stay unset, and `StorageService` signs via Application Default
+Credentials and the IAM Credentials API's `signBlob` instead, using the Cloud Run
+service account's own identity (it needs `roles/iam.serviceAccountTokenCreator` on
+itself). See [ARCHITECTURE.md](./ARCHITECTURE.md)'s decision log and the "Local only"
+env table above.
+
+### Migrations
+
+Never run from the container. Applied from a developer machine, against the direct
+connection:
+
+```bash
+npx nx run @dataroom/database:prisma-migrate-deploy   # DIRECT_URL, no new migration created
+```
+
+### Deploying the SPA
+
+Vercel builds `apps/web` — set **Output Directory** to `apps/web/dist` in the Vercel
+project's build settings (confirmed via `npx nx build @dataroom/web`; not configured in
+`vercel.json`, which only handles the SPA rewrite — see the root `vercel.json`).
 
 ---
 

@@ -17,7 +17,11 @@ async function bootstrap() {
   const port = configService.get('PORT', { infer: true });
   const globalPrefix = 'api';
 
-  await app.listen(port);
+  // Cloud Run requires the container to listen on 0.0.0.0:$PORT — binding to
+  // 127.0.0.1/localhost fails Cloud Run's health checks. Node's implicit default
+  // without a host argument is generally all-interfaces already, but explicit removes
+  // any doubt. See README.md "Deployment".
+  await app.listen(port, '0.0.0.0');
   Logger.log(
     `🚀 Application is running on: http://localhost:${port}/${globalPrefix}`,
   );

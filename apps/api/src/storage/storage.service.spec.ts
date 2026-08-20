@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 
 import { Storage } from '@google-cloud/storage';
@@ -16,9 +17,9 @@ jest.mock('@google-cloud/storage');
 const MockedStorage = Storage as jest.MockedClass<typeof Storage>;
 
 function buildConfigService(
-  overrides: Partial<Record<string, string>> = {},
+  overrides: Partial<Record<string, string | undefined>> = {},
 ): ConfigService<Env, true> {
-  const values: Record<string, string> = {
+  const values: Record<string, string | undefined> = {
     GCS_PROJECT_ID: 'test-project',
     GCS_CLIENT_EMAIL: 'sa@test-project.iam.gserviceaccount.com',
     GCS_PRIVATE_KEY:
@@ -51,6 +52,8 @@ describe('StorageService', () => {
 
   describe('construction', () => {
     it('builds the Storage client from GCS_* config, converting the private key\'s escaped newlines', () => {
+      const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+
       new StorageService(buildConfigService());
 
       expect(MockedStorage).toHaveBeenCalledWith({
@@ -60,6 +63,20 @@ describe('StorageService', () => {
           private_key: '-----BEGIN PRIVATE KEY-----\nabc123\n-----END PRIVATE KEY-----\n',
         },
       });
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('explicit'));
+    });
+
+    it('builds the Storage client from only projectId when GCS_CLIENT_EMAIL/GCS_PRIVATE_KEY are unset, letting ADC supply credentials', () => {
+      const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+
+      new StorageService(
+        buildConfigService({ GCS_CLIENT_EMAIL: undefined, GCS_PRIVATE_KEY: undefined }),
+      );
+
+      expect(MockedStorage).toHaveBeenCalledWith({ projectId: 'test-project' });
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Application Default Credentials'),
+      );
     });
   });
 

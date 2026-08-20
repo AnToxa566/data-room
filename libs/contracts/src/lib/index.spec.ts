@@ -17,6 +17,7 @@ describe('contract', () => {
       'folders',
       'files',
       'shares',
+      'health',
     ]);
   });
 });
