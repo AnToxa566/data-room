@@ -9,6 +9,14 @@ export default defineConfig(() => ({
   server: {
     port: 4200,
     host: 'localhost',
+    // Mirrors the Vercel rewrite in the root vercel.json — VITE_API_URL stays a
+    // relative "/api" in every environment, so nothing branches on where it's running.
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
   },
   preview: {
     port: 4200,

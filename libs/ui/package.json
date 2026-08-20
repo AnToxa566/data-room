@@ -22,9 +22,19 @@
       "default": "./src/lib/utils.ts"
     },
     "./components/ui/button": {
-      "types": "./src/components/ui/button.tsx",
-      "import": "./src/components/ui/button.tsx",
-      "default": "./src/components/ui/button.tsx"
+      "types": "./src/components/ui/button/index.ts",
+      "import": "./src/components/ui/button/index.ts",
+      "default": "./src/components/ui/button/index.ts"
+    },
+    "./components/ui/avatar": {
+      "types": "./src/components/ui/avatar/index.ts",
+      "import": "./src/components/ui/avatar/index.ts",
+      "default": "./src/components/ui/avatar/index.ts"
+    },
+    "./components/ui/dropdown-menu": {
+      "types": "./src/components/ui/dropdown-menu/index.ts",
+      "import": "./src/components/ui/dropdown-menu/index.ts",
+      "default": "./src/components/ui/dropdown-menu/index.ts"
     },
     "./package.json": "./package.json"
   },

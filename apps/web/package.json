@@ -11,7 +11,10 @@
   },
   "dependencies": {
     "@dataroom/contracts": "0.0.1",
-    "@dataroom/ui": "0.0.1"
+    "@dataroom/ui": "0.0.1",
+    "@tanstack/react-query": "^5.101.4",
+    "@tanstack/react-router": "^1.170.31",
+    "@ts-rest/react-query": "^3.52.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

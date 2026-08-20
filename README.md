@@ -98,7 +98,7 @@ development, or set to a different value per environment:
 | `CORS_ORIGINS`         | Comma-separated allowlist of origins allowed to call the API    | Same as `WEB_APP_URL` — never a wildcard                                                      |
 | `GCS_PROJECT_ID`       | GCP project id                                                   | Google Cloud Console                                                                          |
 | `GCS_BUCKET_NAME`      | Storage bucket name                                              | Google Cloud Console → Cloud Storage                                                          |
-| `API_URL`         | API base URL for the SPA (not yet consumed by any code — reserved for the SPA's API client) | `http://localhost:3000/api` locally; the Cloud Run API URL in production |
+| `VITE_API_URL`         | API base URL for the SPA, consumed by `apps/web/src/lib/api.ts` | `/api` in every environment — see "Frontend" below |
 
 **Local only** — never set in production
 
@@ -224,6 +224,27 @@ browser silently drops the cookie), so it's worth double-checking `COOKIE_SAME_S
 **Testing permissioned sharing locally requires two separate Google accounts** — one to
 create a Data Room and share it, a second to receive the invitation and log in as the
 grantee. A single account can't exercise the "shared with me" side of any sharing test.
+
+---
+
+## Frontend
+
+`apps/web` is a Vite SPA using TanStack Router (code-based route tree, not file-based —
+see [ARCHITECTURE.md](./ARCHITECTURE.md)'s decision log) and `@ts-rest/react-query` for
+data fetching, with `GET /api/auth/me` as the single source of truth for who is logged in.
+
+| Path    | Screen           | Guard                                          |
+| ------- | ---------------- | ----------------------------------------------- |
+| `/`     | Landing          | Authenticated users are redirected to `/home`   |
+| `/home` | Signed-in home   | Unauthenticated users are redirected to `/`     |
+
+`VITE_API_URL` is a **relative** path (`/api`) in every environment — the SPA never calls
+the API cross-origin. Locally, `apps/web/vite.config.mts` proxies `/api` to
+`http://localhost:3000`; in production, the root [`vercel.json`](./vercel.json) rewrites
+`/api/:path*` to the Cloud Run API. Both make the request same-origin from the browser's
+point of view, which is what keeps the session cookie first-party — see
+[ARCHITECTURE.md](./ARCHITECTURE.md)'s decision log for why this replaced an earlier
+cross-site cookie approach.
 
 ---
 
