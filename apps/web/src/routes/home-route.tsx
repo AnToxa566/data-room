@@ -1,5 +1,8 @@
 import { createRoute, redirect } from '@tanstack/react-router';
 
+import { AppShell } from '../components/app-shell';
+import { HomeEmptyState } from '../components/home-empty-state';
+import { HomeHeader } from '../components/home-header';
 import { rootRoute } from './root-route';
 
 export const homeRoute = createRoute({
@@ -15,24 +18,19 @@ export const homeRoute = createRoute({
 
 function HomePage() {
   const { auth } = homeRoute.useRouteContext();
-  const user = auth.status === 'authenticated' ? auth.user : null;
+  // `beforeLoad` above already redirects unauthenticated visitors away, so `auth` is
+  // always the authenticated branch by the time this renders.
+  if (auth.status !== 'authenticated') return null;
 
   return (
-    <div
-      data-testid="home-page"
-      className="mx-auto max-w-5xl px-6 py-12 sm:px-8"
-    >
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-        Welcome back{user?.name ? `, ${user.name}` : ''}
-      </h1>
-      <div className="mt-10 flex min-h-64 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border px-6 py-16 text-center">
-        <p className="text-sm font-medium text-foreground">
-          Your Data Rooms will show up here
-        </p>
-        <p className="text-sm text-muted-foreground">
-          Come back soon — creating and browsing Data Rooms is coming in the next update.
-        </p>
+    <AppShell user={auth.user}>
+      <div
+        data-testid="home-page"
+        className="px-4 pt-4 pb-10 min-[900px]:px-10 min-[900px]:pt-7 min-[900px]:pb-14"
+      >
+        <HomeHeader />
+        <HomeEmptyState />
       </div>
-    </div>
+    </AppShell>
   );
 }
