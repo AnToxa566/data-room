@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { createRoute, redirect } from '@tanstack/react-router';
 
 import { AppShell } from '../components/app-shell';
+import { CreateFolderDialog } from '../components/create-folder-dialog';
+import { FolderChildrenTable } from '../components/folder-children-table';
 import { FolderEmptyState } from '../components/folder-empty-state';
 import { FolderToolbar } from '../components/folder-toolbar';
 import { useDataRoomsQuery } from '../lib/data-rooms';
@@ -21,6 +24,7 @@ export const folderRoute = createRoute({
 function FolderPage() {
   const { auth } = folderRoute.useRouteContext();
   const { id } = folderRoute.useParams();
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
   // Called unconditionally, before the early return below — rules of hooks, same
   // reasoning as `home-route.tsx`.
   const folder = useFolderQuery(id);
@@ -56,20 +60,27 @@ function FolderPage() {
         )}
         {folder.isSuccess && children.isSuccess && (
           <>
-            <FolderToolbar name={roomName} />
+            <FolderToolbar name={roomName} onNewFolder={() => setCreateFolderOpen(true)} />
             {children.data.body.items.length === 0 ? (
-              <FolderEmptyState roomName={roomName} />
+              <FolderEmptyState
+                roomName={roomName}
+                onNewFolder={() => setCreateFolderOpen(true)}
+              />
             ) : (
-              // Unreachable today — there's no upload/create-folder UI yet, so no root
-              // folder can have children. Building the populated browser view is out of
-              // scope for this pass; see the plan doc.
-              <p className="pt-14 text-sm text-muted-foreground">
-                This folder isn&apos;t empty — browsing its contents isn&apos;t built yet.
-              </p>
+              <FolderChildrenTable items={children.data.body.items} />
             )}
           </>
         )}
       </div>
+      {folder.isSuccess && (
+        <CreateFolderDialog
+          parentId={id}
+          dataRoomId={folder.data.body.dataRoomId}
+          folderName={roomName}
+          open={createFolderOpen}
+          onOpenChange={setCreateFolderOpen}
+        />
+      )}
     </AppShell>
   );
 }

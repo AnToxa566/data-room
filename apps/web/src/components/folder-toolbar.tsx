@@ -5,6 +5,8 @@ import { Button } from '@dataroom/ui';
 interface FolderToolbarProps {
   /** The Data Room's display name — for the root folder shown here, per `folder-route.tsx`. */
   name: string;
+  /** Opens `CreateFolderDialog` — see `routes/folder-route.tsx`, which owns its open state. */
+  onNewFolder: () => void;
 }
 
 /**
@@ -14,10 +16,10 @@ interface FolderToolbarProps {
  * multi-segment/ellipsis trail — that machinery has nothing to truncate until subfolder
  * navigation exists.
  *
- * New folder / Upload / Share are inert (no `onClick`) — wiring them is explicitly out
- * of scope for this pass; see the plan doc.
+ * "New folder" opens `CreateFolderDialog`. Upload / Share are still inert (no
+ * `onClick`) — wiring them is explicitly out of scope for this pass; see the plan doc.
  */
-export function FolderToolbar({ name }: FolderToolbarProps) {
+export function FolderToolbar({ name, onNewFolder }: FolderToolbarProps) {
   return (
     <>
       <nav aria-label="Breadcrumb" className="flex min-h-7 items-center">
@@ -35,7 +37,7 @@ export function FolderToolbar({ name }: FolderToolbarProps) {
           <div className="mt-0.5 text-xs text-muted-foreground">0 files · 0 folders · 0 B total</div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={onNewFolder}>
             <FolderPlus className="size-4" aria-hidden="true" />
             New folder
           </Button>

@@ -11,15 +11,17 @@ const SETUP_STEPS = [
 interface FolderEmptyStateProps {
   /** The Data Room's display name, for the "Nothing in {name} yet" heading. */
   roomName: string;
+  /** Opens `CreateFolderDialog` — see `routes/folder-route.tsx`, which owns its open state. */
+  onNewFolder: () => void;
 }
 
 /**
  * The "Browser root — empty state" design: two columns, left is the CTA panel (mirrors
  * `HomeEmptyState`'s shape but with folder-scoped copy and two buttons instead of one),
- * right is a static "how rooms are usually set up" reference list. Buttons are inert —
- * same reasoning as `FolderToolbar`, which they mirror.
+ * right is a static "how rooms are usually set up" reference list. "New folder" opens
+ * `CreateFolderDialog`, same as `FolderToolbar`'s button; "Upload PDFs" stays inert.
  */
-export function FolderEmptyState({ roomName }: FolderEmptyStateProps) {
+export function FolderEmptyState({ roomName, onNewFolder }: FolderEmptyStateProps) {
   return (
     <div className="grid grid-cols-1 items-start gap-10 border-b-2 border-border py-13 min-[900px]:grid-cols-2">
       <div>
@@ -34,7 +36,7 @@ export function FolderEmptyState({ roomName }: FolderEmptyStateProps) {
           PDFs into them. Nothing is visible to anyone until you share it.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button variant="default">
+          <Button variant="default" onClick={onNewFolder}>
             <FolderPlus className="size-4" aria-hidden="true" />
             New folder
           </Button>

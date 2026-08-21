@@ -30,6 +30,15 @@ const buttonVariants = cva(
           'bg-secondary text-secondary-foreground hover:bg-[color-mix(in_srgb,var(--secondary),var(--foreground)_7%)] active:bg-[color-mix(in_srgb,var(--secondary),var(--foreground)_14%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground',
         ghost:
           'text-primary hover:bg-primary/10 active:bg-primary/[0.18] aria-expanded:bg-primary/10',
+        // Not one of the design's `.btn-*` classes — `.btn-ghost` is accent-colored (for
+        // low-emphasis text CTAs like the browser table's "Load now"), which is what
+        // `ghost` above mirrors. This is the chromeless icon-only trigger style the
+        // design uses for row "more actions" kebabs specifically (`Data Red Room.dc.html`'s
+        // row/room menu buttons: `color:var(--color-neutral-800)`, hover
+        // `rgba(32,30,29,0.1)` — `#201e1d` is this app's `--foreground`, hence `bg-foreground`
+        // below rather than `bg-primary`).
+        muted:
+          'text-[var(--color-neutral-800)] hover:bg-foreground/[0.1] active:bg-foreground/[0.18] aria-expanded:bg-foreground/[0.1]',
         destructive:
           'bg-destructive text-background hover:bg-[#6d0d27] active:bg-[#5c0b21] focus-visible:ring-destructive',
         link: 'text-primary underline-offset-[3px] hover:underline',

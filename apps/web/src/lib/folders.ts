@@ -1,4 +1,4 @@
-import { tsr } from './api';
+import { queryClient, tsr } from './api';
 
 /**
  * A folder plus its immediate children — the two requests the folder browser route
@@ -14,12 +14,28 @@ export function useFolderQuery(id: string) {
 
 /**
  * First page only (`limit` defaults to 50 server-side) — same "no infinite scroll yet"
- * scope as `useDataRoomsQuery`. Every root folder is empty today (there's no
- * upload/create-folder UI), so a second page is never reachable in this iteration.
+ * scope as `useDataRoomsQuery`.
  */
 export function useFolderChildrenQuery(id: string) {
   return tsr.folders.children.useQuery({
     queryKey: ['folders', id, 'children'],
     queryData: { params: { id } },
+  });
+}
+
+/**
+ * Invalidates only the created folder's parent's children list — same targeted
+ * `invalidateQueries` shape as `useCreateDataRoomMutation` in `lib/data-rooms.ts`. Not
+ * `['folders', parentId]` (the parent's own metadata) — creating a child doesn't change
+ * the parent folder's own fields, only what's inside it. The caller (`CreateFolderDialog`)
+ * adds its own `onSuccess` via `mutate()`'s second argument to close the dialog.
+ */
+export function useCreateFolderMutation() {
+  return tsr.folders.create.useMutation({
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: ['folders', variables.body.parentId, 'children'],
+      });
+    },
   });
 }

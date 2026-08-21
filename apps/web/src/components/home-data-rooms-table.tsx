@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { Archive, MoreVertical } from 'lucide-react';
+import { Archive, MoreVertical, Pencil, Share2, Trash2 } from 'lucide-react';
 
 import type { DataRoomListItem } from '@dataroom/contracts';
 import {
@@ -43,7 +43,7 @@ export function HomeDataRoomsTable({ rooms }: HomeDataRoomsTableProps) {
       >
         Owned by you
       </h2>
-      <div className="grid grid-cols-[minmax(0,1fr)_44px] border-b-2 border-border pb-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase min-[900px]:grid-cols-[minmax(0,1fr)_140px_44px]">
+      <div className="grid grid-cols-[minmax(0,1fr)_44px] border-b-2 border-border pb-2 px-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase min-[900px]:grid-cols-[minmax(0,1fr)_140px_44px]">
         <div>Name</div>
         <div className="hidden min-[900px]:block">Created</div>
         <div />
@@ -87,7 +87,7 @@ export function HomeDataRoomsTable({ rooms }: HomeDataRoomsTableProps) {
               <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="muted"
                   size="icon"
                   aria-label={`More actions for ${room.name}`}
                 >
@@ -96,14 +96,19 @@ export function HomeDataRoomsTable({ rooms }: HomeDataRoomsTableProps) {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={() => setRenameTarget(room)}>
+                  <Pencil aria-hidden="true" />
                   Rename
                 </DropdownMenuItem>
-                <DropdownMenuItem>Share</DropdownMenuItem>
+                <DropdownMenuItem>
+                  <Share2 aria-hidden="true" />
+                  Share
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
                   onSelect={() => setDeleteTarget(room)}
                 >
+                  <Trash2 aria-hidden="true" />
                   Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
