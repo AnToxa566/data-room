@@ -39,3 +39,45 @@ export function useCreateFolderMutation() {
     },
   });
 }
+
+/**
+ * Aggregate size/file count/folder count over a folder's subtree — used by
+ * `DeleteFolderDialog` for its "Files deleted / Subfolders deleted / Total size" stats.
+ * `enabled` is threaded through so the dialog only fetches while it's actually open.
+ */
+export function useFolderStatsQuery(id: string, options?: { enabled?: boolean }) {
+  return tsr.folders.stats.useQuery({
+    queryKey: ['folders', id, 'stats'],
+    queryData: { params: { id } },
+    enabled: options?.enabled,
+  });
+}
+
+/**
+ * `update`'s body only carries `{ name }` — unlike `create`, there's no `parentId` in the
+ * mutation variables to invalidate against, so the caller (`RenameFolderDialog`, which
+ * already receives `parentId` as a prop, same as `CreateFolderDialog`) passes it in here.
+ * Invalidates both the parent's children list (the row's name changed) and the folder's
+ * own cached metadata, if any.
+ */
+export function useUpdateFolderMutation(parentId: string) {
+  return tsr.folders.update.useMutation({
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['folders', parentId, 'children'] });
+      void queryClient.invalidateQueries({ queryKey: ['folders', variables.params.id] });
+    },
+  });
+}
+
+/**
+ * Same reasoning as `useUpdateFolderMutation` — `delete` has no `parentId` in its
+ * variables, so the caller supplies it. Only the parent's children list needs
+ * invalidating; the deleted folder's own cache entry, if any, is simply never read again.
+ */
+export function useDeleteFolderMutation(parentId: string) {
+  return tsr.folders.delete.useMutation({
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['folders', parentId, 'children'] });
+    },
+  });
+}

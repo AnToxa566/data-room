@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ChevronRight, Folder, MoreVertical, Pencil, Share2, Trash2 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 
@@ -11,10 +12,16 @@ import {
   DropdownMenuTrigger,
 } from '@dataroom/ui';
 
+import { DeleteFolderDialog } from './delete-folder-dialog';
+import { RenameFolderDialog } from './rename-folder-dialog';
+
 const dateFormatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' });
 
 interface FolderChildrenTableProps {
   items: FolderChildItem[];
+  /** The currently-viewed folder — every row here is one of its direct children, needed
+   * to invalidate the right children list after a rename/delete. */
+  parentId: string;
 }
 
 /**
@@ -23,16 +30,27 @@ interface FolderChildrenTableProps {
  * Hand-rolled CSS-grid "table", same shape as `HomeDataRoomsTable` — there's no
  * `@tanstack/react-table` (or any table library) anywhere in this repo.
  *
- * A folder row's name navigates into it via `Link` — the only real interactivity here.
- * Every quick action in the kebab menu (Open/Rename/Share/Delete) is inert on purpose:
- * wiring them up is out of scope for this pass. The design gates Move/Download to file
- * rows only (`sc-if row.isFile`), so folder rows never show them.
+ * A folder row's name navigates into it via `Link`. Open/Rename/Delete in the kebab menu
+ * are wired to the same navigation and to their own modals below (one controlled instance
+ * each, parameterized by `renameTarget`/`deleteTarget` — same "single shared dialog" shape
+ * as `HomeDataRoomsTable`). Share remains inert — still out of scope, matching the Data
+ * Room table's own Share item. The design gates Move/Download to file rows only
+ * (`sc-if row.isFile`), so folder rows never show them.
  *
  * `kind: 'file'` rows are unreachable today — nothing can create a file child yet (no
  * upload UI) — so that branch is a minimal stub (name, raw size, modified date, no
  * `Link`, no kebab menu) rather than a fully-built file row. Revisit once upload exists.
  */
-export function FolderChildrenTable({ items }: FolderChildrenTableProps) {
+export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProps) {
+  const [renameTarget, setRenameTarget] = useState<Extract<
+    FolderChildItem,
+    { kind: 'folder' }
+  > | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Extract<
+    FolderChildItem,
+    { kind: 'folder' }
+  > | null>(null);
+
   return (
     <div>
       <div className="grid grid-cols-[minmax(0,1fr)_44px] gap-x-2 border-b-2 border-border pt-2.5 pb-2 px-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase min-[900px]:grid-cols-[minmax(0,1fr)_120px_140px_44px]">
@@ -76,11 +94,13 @@ export function FolderChildrenTable({ items }: FolderChildrenTableProps) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem>
-                    <ChevronRight aria-hidden="true" />
-                    Open
+                  <DropdownMenuItem asChild>
+                    <Link to="/folders/$id" params={{ id: item.id }}>
+                      <ChevronRight aria-hidden="true" />
+                      Open
+                    </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setRenameTarget(item)}>
                     <Pencil aria-hidden="true" />
                     Rename
                   </DropdownMenuItem>
@@ -89,7 +109,7 @@ export function FolderChildrenTable({ items }: FolderChildrenTableProps) {
                     Share
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive">
+                  <DropdownMenuItem variant="destructive" onSelect={() => setDeleteTarget(item)}>
                     <Trash2 aria-hidden="true" />
                     Delete
                   </DropdownMenuItem>
@@ -114,6 +134,23 @@ export function FolderChildrenTable({ items }: FolderChildrenTableProps) {
           </div>
         ),
       )}
+
+      <RenameFolderDialog
+        folder={renameTarget}
+        parentId={parentId}
+        open={!!renameTarget}
+        onOpenChange={(open) => {
+          if (!open) setRenameTarget(null);
+        }}
+      />
+      <DeleteFolderDialog
+        folder={deleteTarget}
+        parentId={parentId}
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }

@@ -61,11 +61,20 @@ function stubFolderApi({
   children = [],
   folderStatus = 200,
   onCreate,
+  onUpdate,
+  onDelete,
+  stats,
 }: {
   children?: unknown[];
   folderStatus?: number;
   /** Return a status other than 201 (e.g. 409) for a specific submitted name. */
   onCreate?: (name: string) => number;
+  /** Return a status other than 200 (e.g. 409) for a specific renamed-to name. */
+  onUpdate?: (name: string) => number;
+  /** Return a status other than 200 for a delete. */
+  onDelete?: () => number;
+  /** Body for any `GET /folders/:id/stats` call — defaults to an empty subtree. */
+  stats?: { totalSize: string; fileCount: number; folderCount: number };
 } = {}) {
   let nextId = 1;
   const fetchMock = vi.fn(async (
@@ -102,6 +111,37 @@ function stubFolderApi({
         updatedAt: '2026-01-07T00:00:00.000Z',
       };
       return jsonResponse(folder, 201);
+    }
+    const statsMatch = /\/folders\/([\w-]+)\/stats$/.exec(url);
+    if (statsMatch && method === 'GET') {
+      return jsonResponse(stats ?? { totalSize: '0', fileCount: 0, folderCount: 0 });
+    }
+    const singleFolderMatch = /\/folders\/([\w-]+)$/.exec(url);
+    if (singleFolderMatch && method === 'PATCH') {
+      const body = JSON.parse((init?.body as string | undefined) ?? '{}') as { name: string };
+      const status = onUpdate ? onUpdate(body.name) : 200;
+      if (status !== 200) {
+        return jsonResponse(
+          { message: `A folder named "${body.name}" already exists here.` },
+          status,
+        );
+      }
+      const folder: Folder = {
+        id: singleFolderMatch[1],
+        name: body.name,
+        dataRoomId: room.id,
+        parentId: rootFolder.id,
+        path: `/folder-1/${singleFolderMatch[1]}/`,
+        depth: 1,
+        createdAt: '2026-01-06T00:00:00.000Z',
+        updatedAt: '2026-01-09T00:00:00.000Z',
+      };
+      return jsonResponse(folder);
+    }
+    if (singleFolderMatch && method === 'DELETE') {
+      const status = onDelete ? onDelete() : 200;
+      if (status !== 200) return jsonResponse({ message: 'Not found.' }, status);
+      return jsonResponse({ success: true });
     }
     if (url.includes('/folders/folder-1/children') && method === 'GET') {
       return jsonResponse({ items: children, nextCursor: null });
@@ -328,7 +368,15 @@ describe('FolderPage — root, populated', () => {
     );
   });
 
-  it('leaves every row quick action inert', async () => {
+  function openRowMenu(name: string) {
+    // Radix opens `DropdownMenuTrigger` on pointerdown, not click — see
+    // libs/ui/src/components/ui/dropdown-menu/dropdown-menu.spec.tsx for the same note.
+    fireEvent.pointerDown(screen.getByRole('button', { name: `More actions for ${name}` }), {
+      button: 0,
+    });
+  }
+
+  it('lists all four row menu items, with Share left inert', async () => {
     stubFolderApi({ children: folderChildren });
     const { router } = renderRouterAt('/folders/folder-1', {
       status: 'authenticated',
@@ -336,45 +384,304 @@ describe('FolderPage — root, populated', () => {
     });
 
     await screen.findByText('02 Financials');
-    // Radix opens `DropdownMenuTrigger` on pointerdown, not click — see
-    // libs/ui/src/components/ui/dropdown-menu/dropdown-menu.spec.tsx for the same note.
-    fireEvent.pointerDown(
-      screen.getByRole('button', { name: 'More actions for 02 Financials' }),
-      { button: 0 },
-    );
+    openRowMenu('02 Financials');
 
-    const openItem = await screen.findByRole('menuitem', { name: 'Open' });
+    expect(await screen.findByRole('menuitem', { name: 'Open' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Share' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: 'Move' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Download' })).toBeNull();
 
-    fireEvent.click(openItem);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Share' }));
     expect(router.state.location.pathname).toBe('/folders/folder-1');
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
 
-    fireEvent.pointerDown(
-      screen.getByRole('button', { name: 'More actions for 02 Financials' }),
-      { button: 0 },
+  it('navigates into the folder when "Open" is chosen from its row menu', async () => {
+    stubFolderApi({ children: folderChildren });
+    const { router } = renderRouterAt('/folders/folder-1', {
+      status: 'authenticated',
+      user: mockUser,
+    });
+
+    await screen.findByText('02 Financials');
+    openRowMenu('02 Financials');
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Open' }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/folders/folder-child-1'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('FolderPage — renaming a folder', () => {
+  const folderChildren = [
+    {
+      kind: 'folder',
+      id: 'folder-child-1',
+      name: '02 Financials',
+      createdAt: '2026-01-06T00:00:00.000Z',
+      updatedAt: '2026-01-08T00:00:00.000Z',
+    },
+  ];
+
+  function openRowMenu(name: string) {
+    fireEvent.pointerDown(screen.getByRole('button', { name: `More actions for ${name}` }), {
+      button: 0,
+    });
+  }
+
+  it('disables Save and shows a loading label while in flight, closes the dialog, and toasts on success', async () => {
+    let resolvePatch!: (response: Response) => void;
+    const pendingPatch = new Promise<Response>((resolve) => {
+      resolvePatch = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        const method = (init?.method ?? 'GET').toUpperCase();
+        if (url.includes('/data-rooms') && method === 'GET') {
+          return jsonResponse({ items: [room, otherRoom], nextCursor: null });
+        }
+        if (url.includes('/folders/folder-child-1') && method === 'PATCH') {
+          return pendingPatch;
+        }
+        if (url.includes('/folders/folder-1/children') && method === 'GET') {
+          return jsonResponse({ items: folderChildren, nextCursor: null });
+        }
+        if (url.includes('/folders/folder-1') && method === 'GET') {
+          return jsonResponse({
+            ...rootFolder,
+            breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
+            isRoot: true,
+          });
+        }
+        throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+      }),
     );
+
+    renderRouterAt('/folders/folder-1', { status: 'authenticated', user: mockUser });
+
+    await screen.findByText('02 Financials');
+    openRowMenu('02 Financials');
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
 
-    fireEvent.pointerDown(
-      screen.getByRole('button', { name: 'More actions for 02 Financials' }),
-      { button: 0 },
-    );
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Share' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    const nameInput = await screen.findByLabelText('Folder name');
+    expect(nameInput).toHaveProperty('value', '02 Financials');
+    fireEvent.change(nameInput, { target: { value: '02 Financials (renamed)' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    fireEvent.pointerDown(
-      screen.getByRole('button', { name: 'More actions for 02 Financials' }),
-      { button: 0 },
+    const savingButton = await screen.findByRole('button', { name: 'Saving…' });
+    expect(savingButton).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveProperty('disabled', true);
+
+    resolvePatch(
+      jsonResponse({
+        id: 'folder-child-1',
+        name: '02 Financials (renamed)',
+        dataRoomId: room.id,
+        parentId: rootFolder.id,
+        path: '/folder-1/folder-child-1/',
+        depth: 1,
+        createdAt: '2026-01-06T00:00:00.000Z',
+        updatedAt: '2026-01-09T00:00:00.000Z',
+      }),
     );
+
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Rename folder' })).toBeNull());
+    expect(await screen.findByRole('status')).toHaveProperty(
+      'textContent',
+      'Renamed to "02 Financials (renamed)"',
+    );
+  });
+
+  it('shows the 409 conflict message inline and keeps the dialog open', async () => {
+    stubFolderApi({ children: folderChildren, onUpdate: () => 409 });
+    renderRouterAt('/folders/folder-1', { status: 'authenticated', user: mockUser });
+
+    await screen.findByText('02 Financials');
+    openRowMenu('02 Financials');
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+
+    const nameInput = await screen.findByLabelText('Folder name');
+    fireEvent.change(nameInput, { target: { value: '01 Legal' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'A folder named "01 Legal" already exists here.',
+    );
+    expect(screen.getByRole('heading', { name: 'Rename folder' })).toBeTruthy();
+  });
+});
+
+describe('FolderPage — deleting a folder', () => {
+  const folderChildren = [
+    {
+      kind: 'folder',
+      id: 'folder-child-1',
+      name: '02 Financials',
+      createdAt: '2026-01-06T00:00:00.000Z',
+      updatedAt: '2026-01-08T00:00:00.000Z',
+    },
+  ];
+
+  function openRowMenu(name: string) {
+    fireEvent.pointerDown(screen.getByRole('button', { name: `More actions for ${name}` }), {
+      button: 0,
+    });
+  }
+
+  it('shows live stats once loaded, disables the button and shows a loading label while in flight, closes the dialog, and toasts on success', async () => {
+    let resolveDelete!: (response: Response) => void;
+    const pendingDelete = new Promise<Response>((resolve) => {
+      resolveDelete = resolve;
+    });
+    const fetchMock = vi.fn(async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (url.includes('/data-rooms') && method === 'GET') {
+        return jsonResponse({ items: [room, otherRoom], nextCursor: null });
+      }
+      if (url.includes('/folders/folder-child-1/stats') && method === 'GET') {
+        // `folderCount` includes the target folder's own row (see `FoldersService.stats`),
+        // so this is "1 real subfolder" — 2, not 1.
+        return jsonResponse({ totalSize: '2097152', fileCount: 3, folderCount: 2 });
+      }
+      if (url.includes('/folders/folder-child-1') && method === 'DELETE') {
+        return pendingDelete;
+      }
+      if (url.includes('/folders/folder-1/children') && method === 'GET') {
+        return jsonResponse({ items: folderChildren, nextCursor: null });
+      }
+      if (url.includes('/folders/folder-1') && method === 'GET') {
+        return jsonResponse({
+          ...rootFolder,
+          breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
+          isRoot: true,
+        });
+      }
+      throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderRouterAt('/folders/folder-1', { status: 'authenticated', user: mockUser });
+
+    await screen.findByText('02 Financials');
+    openRowMenu('02 Financials');
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(router.state.location.pathname).toBe('/folders/folder-1');
+
+    expect(
+      await screen.findByRole('heading', { name: 'Delete "02 Financials" and everything inside it?' }),
+    ).toBeTruthy();
+    const deleteButton = await screen.findByRole('button', { name: 'Delete folder and 4 items' });
+
+    fireEvent.click(deleteButton);
+    const deletingButton = await screen.findByRole('button', { name: 'Deleting…' });
+    expect(deletingButton).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Keep folder' })).toHaveProperty('disabled', true);
+
+    resolveDelete(jsonResponse({ success: true }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('heading', { name: 'Delete "02 Financials" and everything inside it?' }),
+      ).toBeNull(),
+    );
+    expect(await screen.findByRole('status')).toHaveProperty(
+      'textContent',
+      '"02 Financials" deleted permanently',
+    );
+
+    const deleteCall = fetchMock.mock.calls.find(
+      ([, init]) => (init?.method ?? '').toUpperCase() === 'DELETE',
+    );
+    expect(deleteCall).toBeTruthy();
+  });
+
+  it('shows skeletons in place of the stats and disables the delete button while stats are still loading', async () => {
+    let resolveStats!: (response: Response) => void;
+    const pendingStats = new Promise<Response>((resolve) => {
+      resolveStats = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        const method = (init?.method ?? 'GET').toUpperCase();
+        if (url.includes('/data-rooms') && method === 'GET') {
+          return jsonResponse({ items: [room, otherRoom], nextCursor: null });
+        }
+        if (url.includes('/folders/folder-child-1/stats') && method === 'GET') {
+          return pendingStats;
+        }
+        if (url.includes('/folders/folder-1/children') && method === 'GET') {
+          return jsonResponse({ items: folderChildren, nextCursor: null });
+        }
+        if (url.includes('/folders/folder-1') && method === 'GET') {
+          return jsonResponse({
+            ...rootFolder,
+            breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
+            isRoot: true,
+          });
+        }
+        throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+      }),
+    );
+
+    renderRouterAt('/folders/folder-1', { status: 'authenticated', user: mockUser });
+
+    await screen.findByText('02 Financials');
+    openRowMenu('02 Financials');
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+
+    // The count is still unknown, so the button reads the plain, generic label — no "and
+    // N items" jump once the count resolves — and can't be clicked yet.
+    const deleteButton = await screen.findByRole('button', { name: 'Delete folder' });
+    expect(deleteButton).toHaveProperty('disabled', true);
+
+    // Every stat cell shows a skeleton rather than a value or a dash.
+    expect(document.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(3);
+    expect(screen.queryByText('0')).toBeNull();
+
+    resolveStats(jsonResponse({ totalSize: '0', fileCount: 0, folderCount: 1 }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Delete folder and 0 items' })).toHaveProperty(
+        'disabled',
+        false,
+      ),
+    );
+    expect(document.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(0);
+  });
+
+  it('shows zero subfolders for an empty folder, not the target folder\'s own row', async () => {
+    // `folderCount` from the API always includes the target folder itself (see
+    // `FoldersService.stats`) — for a folder with no real subfolders, that's 1, and the
+    // dialog must not show that as "Subfolders deleted: 1".
+    stubFolderApi({
+      children: folderChildren,
+      stats: { totalSize: '0', fileCount: 0, folderCount: 1 },
+    });
+    renderRouterAt('/folders/folder-1', { status: 'authenticated', user: mockUser });
+
+    await screen.findByText('02 Financials');
+    openRowMenu('02 Financials');
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+
+    await screen.findByRole('button', { name: 'Delete folder and 0 items' });
+    const stats = screen.getByText('Subfolders deleted').nextElementSibling;
+    expect(stats).toHaveProperty('textContent', '0');
   });
 });
 

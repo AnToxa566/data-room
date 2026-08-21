@@ -85,7 +85,7 @@ function FolderPage() {
                 <FolderEmptySubfolderState onNewFolder={() => setCreateFolderOpen(true)} />
               )
             ) : (
-              <FolderChildrenTable items={children.data.body.items} />
+              <FolderChildrenTable items={children.data.body.items} parentId={id} />
             )}
           </>
         )}
