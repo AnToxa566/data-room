@@ -4,11 +4,18 @@ import { RouterProvider } from '@tanstack/react-router';
 
 import { createAppRouter } from '../routes/router';
 import type { SettledAuthState } from '../lib/auth';
+import { tsr } from '../lib/api';
 
 /**
  * Renders the real route tree with already-resolved auth context injected directly — no
- * network call, no mocking needed. `App`'s own loading→settled transition is deliberately
- * not exercised here (see auth-routing.spec.ts in web-e2e for that).
+ * network call for auth, no mocking needed there. `App`'s own loading→settled transition
+ * is deliberately not exercised here (see auth-routing.spec.ts in web-e2e for that).
+ *
+ * Wraps `tsr.ReactQueryProvider` because components under `/home` (AppSidebar, HomePage)
+ * call ts-rest query/mutation hooks directly — without it those hooks throw
+ * "tsrQueryClient not initialized" (see @ts-rest/react-query's `useTsrQueryClient`).
+ * Those hooks still hit real `fetch` under the hood, so any spec that renders a route
+ * exercising them must stub `global.fetch` itself.
  */
 export function renderRouterAt(path: string, auth: SettledAuthState) {
   window.history.pushState({}, '', path);
@@ -20,7 +27,9 @@ export function renderRouterAt(path: string, auth: SettledAuthState) {
 
   const result = render(
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <tsr.ReactQueryProvider>
+        <RouterProvider router={router} />
+      </tsr.ReactQueryProvider>
     </QueryClientProvider>,
   );
 

@@ -1,3 +1,5 @@
+import { Archive } from 'lucide-react';
+
 export interface NavItem {
   id: string;
   name: string;
@@ -29,9 +31,10 @@ export function NavSection({ title, emptyText, items = [] }: NavSectionProps) {
             <li key={item.id}>
               <button
                 type="button"
-                className="w-full truncate rounded-sm px-2 py-2 text-left text-sm outline-none hover:bg-foreground/[0.07] focus-visible:ring-3 focus-visible:ring-ring/50"
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm outline-none hover:bg-foreground/[0.07] focus-visible:ring-3 focus-visible:ring-ring/50"
               >
-                {item.name}
+                <Archive className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="truncate">{item.name}</span>
               </button>
             </li>
           ))}

@@ -4,6 +4,7 @@ import { LogOut } from 'lucide-react';
 import type { User } from '@dataroom/contracts';
 
 import { useSignOut } from '../lib/auth';
+import { useDataRoomsQuery } from '../lib/data-rooms';
 import { NavSection } from './nav-section';
 
 interface AppSidebarProps {
@@ -17,6 +18,14 @@ interface AppSidebarProps {
  */
 export function AppSidebar({ user }: AppSidebarProps) {
   const signOut = useSignOut();
+  // No loading/error treatment here beyond falling back to `NavSection`'s `emptyText` —
+  // the Home route (routes/home-route.tsx) owns the real loading/error UI for this same
+  // query; react-query dedupes the two `useDataRoomsQuery()` calls into one request.
+  const dataRooms = useDataRoomsQuery();
+  const myRooms = dataRooms.data?.body.items.map((room) => ({
+    id: room.id,
+    name: room.name,
+  }));
 
   return (
     <aside className="hidden w-67 shrink-0 flex-col border-r-2 border-border bg-card min-[900px]:flex">
@@ -34,7 +43,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
       </div>
 
       <nav aria-label="Your Data Rooms" className="flex flex-col gap-5 p-3 pt-4">
-        <NavSection title="Your Data Rooms" emptyText="None yet" />
+        <NavSection title="Your Data Rooms" emptyText="None yet" items={myRooms} />
         <NavSection title="Shared with me" emptyText="Nothing shared with you" />
       </nav>
 

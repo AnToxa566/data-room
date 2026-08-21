@@ -22,12 +22,15 @@ const STEPS = [
   },
 ] as const;
 
+interface HomeEmptyStateProps {
+  onNewRoom: () => void;
+}
+
 /**
- * The "no Data Rooms yet" state. The CTA mirrors `HomeHeader`'s "New Data Room"
- * button but has no handler either, for the same reason — creating a room isn't
- * implemented yet.
+ * The "no Data Rooms yet" state. The CTA mirrors `HomeHeader`'s "New Data Room" button
+ * and opens the same `CreateDataRoomDialog` — see routes/home-route.tsx.
  */
-export function HomeEmptyState() {
+export function HomeEmptyState({ onNewRoom }: HomeEmptyStateProps) {
   return (
     <div className="pt-14 pb-6">
       <div aria-hidden="true" className="mb-6 size-7 bg-accent" />
@@ -45,7 +48,7 @@ export function HomeEmptyState() {
           <HomeStep key={step.index} {...step} />
         ))}
       </div>
-      <Button variant="default">
+      <Button variant="default" onClick={onNewRoom}>
         <Plus className="size-4" aria-hidden="true" />
         Create your first Data Room
       </Button>

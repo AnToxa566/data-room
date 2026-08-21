@@ -36,6 +36,16 @@
       "import": "./src/components/ui/dropdown-menu/index.ts",
       "default": "./src/components/ui/dropdown-menu/index.ts"
     },
+    "./components/ui/dialog": {
+      "types": "./src/components/ui/dialog/index.ts",
+      "import": "./src/components/ui/dialog/index.ts",
+      "default": "./src/components/ui/dialog/index.ts"
+    },
+    "./components/ui/input": {
+      "types": "./src/components/ui/input/index.ts",
+      "import": "./src/components/ui/input/index.ts",
+      "default": "./src/components/ui/input/index.ts"
+    },
     "./package.json": "./package.json"
   },
   "devDependencies": {

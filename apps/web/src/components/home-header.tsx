@@ -2,12 +2,16 @@ import { Plus } from 'lucide-react';
 
 import { Button } from '@dataroom/ui';
 
+interface HomeHeaderProps {
+  onNewRoom: () => void;
+}
+
 /**
  * The "Data Rooms" title row, shared by every state of the room list (empty and
- * populated alike). The "New Data Room" action has no handler yet — creating a Data
- * Room isn't implemented, so the button is intentionally inert.
+ * populated alike). "New Data Room" opens `CreateDataRoomDialog` — see
+ * routes/home-route.tsx, which owns the dialog's open state and passes it down here.
  */
-export function HomeHeader() {
+export function HomeHeader({ onNewRoom }: HomeHeaderProps) {
   return (
     <div className="flex flex-wrap items-end gap-4 border-b-2 border-border pb-4">
       <div className="min-w-55 flex-1">
@@ -18,7 +22,7 @@ export function HomeHeader() {
           Confidential document repositories. One room per deal.
         </p>
       </div>
-      <Button variant="default">
+      <Button variant="default" onClick={onNewRoom}>
         <Plus className="size-4" aria-hidden="true" />
         New Data Room
       </Button>
