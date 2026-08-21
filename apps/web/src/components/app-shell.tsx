@@ -8,6 +8,9 @@ import { AppTopbar } from './app-topbar';
 interface AppShellProps {
   user: Pick<User, 'name' | 'email'>;
   children: ReactNode;
+  /** The Data Room currently being browsed, if any — highlights that room's sidebar entry.
+   * See `NavSection`. Omitted on routes with no "current room" concept, e.g. `/home`. */
+  activeDataRoomId?: string;
 }
 
 /**
@@ -16,10 +19,10 @@ interface AppShellProps {
  * viewer, so this is meant to wrap all of those, not just `/home`. Replaces the old
  * shared `<Header/>` for every authenticated route (see `root-route.tsx`).
  */
-export function AppShell({ user, children }: AppShellProps) {
+export function AppShell({ user, children, activeDataRoomId }: AppShellProps) {
   return (
     <div className="flex flex-1 items-stretch">
-      <AppSidebar user={user} />
+      <AppSidebar user={user} activeDataRoomId={activeDataRoomId} />
       <main className="flex min-w-0 flex-1 flex-col">
         <AppTopbar />
         {children}

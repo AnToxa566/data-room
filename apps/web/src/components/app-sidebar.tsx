@@ -9,6 +9,8 @@ import { NavSection } from './nav-section';
 
 interface AppSidebarProps {
   user: Pick<User, 'name' | 'email'>;
+  /** The Data Room currently being browsed, if any — see `NavSection`. */
+  activeDataRoomId?: string;
 }
 
 /**
@@ -16,7 +18,7 @@ interface AppSidebarProps {
  * `<Header/>` used to for authenticated users; see `app-shell.tsx` for why it
  * replaces `<Header/>` rather than sitting alongside it.
  */
-export function AppSidebar({ user }: AppSidebarProps) {
+export function AppSidebar({ user, activeDataRoomId }: AppSidebarProps) {
   const signOut = useSignOut();
   // No loading/error treatment here beyond falling back to `NavSection`'s `emptyText` —
   // the Home route (routes/home-route.tsx) owns the real loading/error UI for this same
@@ -44,7 +46,12 @@ export function AppSidebar({ user }: AppSidebarProps) {
       </div>
 
       <nav aria-label="Your Data Rooms" className="flex flex-col gap-5 p-3 pt-4">
-        <NavSection title="Your Data Rooms" emptyText="None yet" items={myRooms} />
+        <NavSection
+          title="Your Data Rooms"
+          emptyText="None yet"
+          items={myRooms}
+          activeDataRoomId={activeDataRoomId}
+        />
         <NavSection title="Shared with me" emptyText="Nothing shared with you" />
       </nav>
 

@@ -45,9 +45,12 @@ function FolderPage() {
         ?.name) ||
     folder.data?.body.name ||
     '';
+  // The root folder's own `name` column is a fixed constant, not the room's name (see
+  // `apps/api/src/data-rooms/data-rooms.service.ts`) — every other folder's `name` is real.
+  const displayName = folder.data?.body.isRoot ? roomName : folder.data?.body.name || '';
 
   return (
-    <AppShell user={auth.user}>
+    <AppShell user={auth.user} activeDataRoomId={folder.data?.body.dataRoomId}>
       <div
         data-testid="folder-page"
         className="px-4 pt-4 pb-10 min-[900px]:px-10 min-[900px]:pt-7 min-[900px]:pb-14"
@@ -60,7 +63,12 @@ function FolderPage() {
         )}
         {folder.isSuccess && children.isSuccess && (
           <>
-            <FolderToolbar name={roomName} onNewFolder={() => setCreateFolderOpen(true)} />
+            <FolderToolbar
+              roomName={roomName}
+              displayName={displayName}
+              breadcrumbs={folder.data.body.breadcrumbs}
+              onNewFolder={() => setCreateFolderOpen(true)}
+            />
             {children.data.body.items.length === 0 ? (
               <FolderEmptyState
                 roomName={roomName}
@@ -76,7 +84,7 @@ function FolderPage() {
         <CreateFolderDialog
           parentId={id}
           dataRoomId={folder.data.body.dataRoomId}
-          folderName={roomName}
+          folderName={displayName}
           open={createFolderOpen}
           onOpenChange={setCreateFolderOpen}
         />
