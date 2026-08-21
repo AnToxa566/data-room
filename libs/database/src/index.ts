@@ -20,4 +20,5 @@ export {
   FileStatus,
   ShareResourceType,
   ShareRole,
+  ShareMode,
 } from './generated/prisma/enums.js';

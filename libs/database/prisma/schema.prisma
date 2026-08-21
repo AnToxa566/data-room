@@ -117,16 +117,29 @@ enum ShareRole {
   EDITOR
 }
 
+// Discriminates the two access modes a Share can grant. `mode` is always set — it
+// replaces an earlier design where a nullable `linkToken` doubled as both the "is this
+// a public link" flag and a bearer secret embedded in the share URL. Public links no
+// longer carry a secret: the app URL for a resource is the same regardless of how it was
+// shared (owner, direct grant, or public link), and `resolveAccess` grants PUBLIC-mode
+// shares to any caller, authenticated or not. See ARCHITECTURE.md §4 and §8's public-link
+// decision-log entries.
+enum ShareMode {
+  EMAIL
+  PUBLIC
+}
+
 model Share {
   id           String            @id @default(uuid())
   resourceType ShareResourceType
   resourceId   String
   role         ShareRole         @default(VIEWER)
+  mode         ShareMode
 
-  // exactly one access mode is populated:
-  //   public link    -> linkToken
-  //   direct grant   -> granteeEmail (+ granteeUserId once resolved at login)
-  linkToken     String? @unique
+  // Only populated when mode = EMAIL. granteeEmail is what the owner typed (an
+  // invitation record); granteeUserId is the resolved access key, set once at the
+  // grantee's next verified login (see AuthService.upsertGoogleUserAndResolvePendingShares).
+  // Never resolve access by granteeEmail — see ARCHITECTURE.md §4.
   granteeEmail  String?
   granteeUserId String?
 

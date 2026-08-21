@@ -635,7 +635,7 @@ describe('Files (e2e)', () => {
   });
 
   describe('Authentication', () => {
-    it('401s every endpoint without a session cookie', async () => {
+    it('401s every mutating endpoint without a session cookie', async () => {
       const { cookie } = await createUserAndCookie('for-401-fixture');
       const room = await createRoom(cookie, 'Fixture Room');
       const file = await uploadReadyFile(cookie, room.rootFolderId, 'fixture.pdf');
@@ -645,15 +645,28 @@ describe('Files (e2e)', () => {
         .send(uploadUrlBody({ folderId: room.rootFolderId }))
         .expect(401);
       await request(app.getHttpServer()).post(`/api/files/${file.id}/complete`).expect(401);
-      await request(app.getHttpServer()).get(`/api/files/${file.id}`).expect(401);
-      await request(app.getHttpServer())
-        .get(`/api/files/${file.id}/download-url`)
-        .expect(401);
       await request(app.getHttpServer())
         .patch(`/api/files/${file.id}`)
         .send({ name: 'x' })
         .expect(401);
       await request(app.getHttpServer()).delete(`/api/files/${file.id}`).expect(401);
+    });
+
+    // `get`/`downloadUrl` are deliberately reachable without a session cookie — see
+    // ARCHITECTURE.md §4's public-link sharing. A caller with no cookie is anonymous,
+    // not unauthorized; without a matching public share, the resource is 404 (not 401
+    // or 403), identical to any other resource an anonymous caller can't see. Positive
+    // anonymous-access coverage (an active public share succeeding) lives in
+    // shares.e2e.spec.ts.
+    it('404s (not 401) get/download-url without a session cookie and no public share', async () => {
+      const { cookie } = await createUserAndCookie('for-anon-404-fixture');
+      const room = await createRoom(cookie, 'Fixture Room');
+      const file = await uploadReadyFile(cookie, room.rootFolderId, 'fixture.pdf');
+
+      await request(app.getHttpServer()).get(`/api/files/${file.id}`).expect(404);
+      await request(app.getHttpServer())
+        .get(`/api/files/${file.id}/download-url`)
+        .expect(404);
     });
   });
 });

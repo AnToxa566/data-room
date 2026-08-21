@@ -120,13 +120,19 @@ export class FilesService {
     return toFileDto(updated);
   }
 
-  async get(userId: string, id: string): Promise<ContractFile> {
-    await this.accessControl.requireAccess(userId, 'FILE', id, 'OWNER');
+  /**
+   * `VIEWER` minimum, not `OWNER` — this is a read, so the owner, an `EDITOR`/`VIEWER`
+   * grantee, and an anonymous public-link visitor (`userId: null`) can all reach it. See
+   * FoldersService.get's identical note; `update`/`delete`/upload stay `OWNER`-only.
+   */
+  async get(userId: string | null, id: string): Promise<ContractFile> {
+    await this.accessControl.requireAccess(userId, 'FILE', id, 'VIEWER');
     return toFileDto(await this.findFileOrThrow(id));
   }
 
-  async downloadUrl(userId: string, id: string): Promise<DownloadUrlResult> {
-    await this.accessControl.requireAccess(userId, 'FILE', id, 'OWNER');
+  /** `VIEWER` minimum — see `get`'s doc comment. */
+  async downloadUrl(userId: string | null, id: string): Promise<DownloadUrlResult> {
+    await this.accessControl.requireAccess(userId, 'FILE', id, 'VIEWER');
     const file = await this.findFileOrThrow(id);
     if (file.status !== FileStatus.READY) {
       throw new BadRequestException('This file is not ready yet.');

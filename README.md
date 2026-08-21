@@ -371,7 +371,7 @@ erDiagram
         enum resourceType "DATA_ROOM | FOLDER | FILE"
         string resourceId
         enum role "VIEWER | EDITOR"
-        string linkToken UK "public-link mode"
+        enum mode "EMAIL | PUBLIC"
         string granteeEmail "direct-grant mode"
         string granteeUserId FK "resolved at login"
         string createdById FK
@@ -402,9 +402,12 @@ update with zero storage calls, and name-conflict resolution costs nothing.
 
 **Shares are a single flat table covering both modes.**
 Public links and per-user grants are the same statement — _someone holds role R on
-resource X_ — differing only in who "someone" is: a token bearer or a specific user.
-Keeping `role` on the same row for both modes is what makes the viewer/editor extension
-below a no-op.
+resource X_ — differing only in who "someone" is: anyone (a `PUBLIC`-mode share) or a
+specific user (an `EMAIL`-mode share's `granteeUserId`). Keeping `role` on the same row
+for both modes is what makes the viewer/editor extension below a no-op. A shared
+resource's app URL is the same either way — there's no token in the URL to distinguish
+them; `resolveAccess` grants a `PUBLIC` share to any caller, including one with no
+session at all.
 
 **`granteeEmail` and `granteeUserId` are both stored.**
 Email is what the owner typed and works before the invitee has an account. `granteeUserId`

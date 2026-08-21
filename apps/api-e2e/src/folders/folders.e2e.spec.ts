@@ -380,7 +380,7 @@ describe('Folders (e2e)', () => {
   });
 
   describe('Authentication', () => {
-    it('401s every endpoint without a session cookie', async () => {
+    it('401s every mutating endpoint without a session cookie', async () => {
       const { cookie } = await createUserAndCookie('for-401-fixture');
       const room = await createRoom(cookie, 'Fixture Room');
       const child = (await createFolder(cookie, {
@@ -393,16 +393,33 @@ describe('Folders (e2e)', () => {
         .post('/api/folders')
         .send({ dataRoomId: room.id, parentId: room.rootFolderId, name: 'x' })
         .expect(401);
-      await request(app.getHttpServer()).get(`/api/folders/${child.id}`).expect(401);
-      await request(app.getHttpServer())
-        .get(`/api/folders/${child.id}/children`)
-        .expect(401);
-      await request(app.getHttpServer()).get(`/api/folders/${child.id}/stats`).expect(401);
       await request(app.getHttpServer())
         .patch(`/api/folders/${child.id}`)
         .send({ name: 'x' })
         .expect(401);
       await request(app.getHttpServer()).delete(`/api/folders/${child.id}`).expect(401);
+    });
+
+    // `get`/`children`/`stats` are deliberately reachable without a session cookie —
+    // see ARCHITECTURE.md §4's public-link sharing. A caller with no cookie is
+    // anonymous, not unauthorized; without a matching public share, the resource is 404
+    // (not 401 or 403), identical to any other resource an anonymous caller can't see.
+    // Positive anonymous-access coverage (an active public share succeeding) lives in
+    // shares.e2e.spec.ts.
+    it('404s (not 401) get/children/stats without a session cookie and no public share', async () => {
+      const { cookie } = await createUserAndCookie('for-anon-404-fixture');
+      const room = await createRoom(cookie, 'Fixture Room');
+      const child = (await createFolder(cookie, {
+        dataRoomId: room.id,
+        parentId: room.rootFolderId,
+        name: 'Child',
+      })).body;
+
+      await request(app.getHttpServer()).get(`/api/folders/${child.id}`).expect(404);
+      await request(app.getHttpServer())
+        .get(`/api/folders/${child.id}/children`)
+        .expect(404);
+      await request(app.getHttpServer()).get(`/api/folders/${child.id}/stats`).expect(404);
     });
   });
 });

@@ -96,8 +96,15 @@ export class FoldersService {
     }
   }
 
-  async get(userId: string, id: string) {
-    await this.accessControl.requireAccess(userId, 'FOLDER', id, 'OWNER');
+  /**
+   * `VIEWER` minimum, not `OWNER` — this is a read, so the owner, an `EDITOR`/`VIEWER`
+   * grantee, and an anonymous public-link visitor (`userId: null`, resolved through an
+   * active `PUBLIC` share — see `AccessControlService`) can all reach it. Contrast
+   * `create`/`update`/`delete` below, which stay `OWNER`-only: `EDITOR` write
+   * enforcement is a stated non-goal this iteration (ARCHITECTURE.md §9).
+   */
+  async get(userId: string | null, id: string) {
+    await this.accessControl.requireAccess(userId, 'FOLDER', id, 'VIEWER');
     const folder = await this.findOrThrow(id);
 
     // Ancestor ids come from parsing `path` (root-first, self-last), then a single query
@@ -115,12 +122,13 @@ export class FoldersService {
     return toFolderWithBreadcrumbsDto(folder, breadcrumbs);
   }
 
+  /** `VIEWER` minimum — see `get`'s doc comment. */
   async children(
-    userId: string,
+    userId: string | null,
     id: string,
     query: { cursor?: string; limit: number },
   ): Promise<ListFolderChildrenResult> {
-    await this.accessControl.requireAccess(userId, 'FOLDER', id, 'OWNER');
+    await this.accessControl.requireAccess(userId, 'FOLDER', id, 'VIEWER');
     const cursor: FolderChildCursor | null = query.cursor
       ? decodeCursor(query.cursor, FolderChildCursorSchema)
       : null;
@@ -202,8 +210,9 @@ export class FoldersService {
     return { items, nextCursor };
   }
 
-  async stats(userId: string, id: string): Promise<FolderStats> {
-    await this.accessControl.requireAccess(userId, 'FOLDER', id, 'OWNER');
+  /** `VIEWER` minimum — see `get`'s doc comment. */
+  async stats(userId: string | null, id: string): Promise<FolderStats> {
+    await this.accessControl.requireAccess(userId, 'FOLDER', id, 'VIEWER');
     const folder = await this.findOrThrow(id);
 
     // Prefix range over the materialized path, not recursion — see ARCHITECTURE.md

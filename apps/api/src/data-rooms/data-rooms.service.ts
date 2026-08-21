@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { z } from 'zod';
 
-import { PrismaService } from '@dataroom/database';
+import { PrismaService, ShareMode } from '@dataroom/database';
 import type {
   CreateDataRoomBody,
   DataRoomListItem,
@@ -73,30 +73,54 @@ export class DataRoomsService {
     return toDataRoomDto(dataRoom);
   }
 
+  /**
+   * Data Rooms owned by, or shared with, `userId` — one combined, cursor-paginated list.
+   * "Shared with" means an active `DATA_ROOM`-level `EMAIL` share naming `userId` as
+   * `granteeUserId`, deliberately **not** `PUBLIC`-mode shares: visiting a public link
+   * doesn't add the room to the visitor's personal list, matching Drive (opening an
+   * "anyone with the link" file doesn't add it to My Drive). Folder/file-level shares
+   * don't surface here either — this list is Data-Room-shaped by contract; a shared
+   * folder/file's only entry point is its own direct URL (see FoldersController/
+   * FilesController's anonymous-capable `get`).
+   */
   async list(
-    ownerId: string,
+    userId: string,
     query: { cursor?: string; limit: number },
   ): Promise<ListDataRoomsResult> {
-    // Shared-with-me arrives in iteration 5 — see AGENTS.md Part 2. This response shape
-    // doesn't need to change then, only the `where` clause and each item's `access`.
     const cursor = query.cursor ? decodeCursor(query.cursor, DataRoomCursorSchema) : null;
+
+    const sharedRooms = await this.prisma.share.findMany({
+      where: {
+        resourceType: 'DATA_ROOM',
+        mode: ShareMode.EMAIL,
+        granteeUserId: userId,
+        revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      select: { resourceId: true, role: true },
+    });
+    const sharedRoleByRoomId = new Map(sharedRooms.map((share) => [share.resourceId, share.role]));
 
     const rooms = await this.prisma.dataRoom.findMany({
       where: {
-        ownerId,
-        ...(cursor
-          ? {
-              OR: [
-                { createdAt: { lt: new Date(cursor.createdAt) } },
+        AND: [
+          { OR: [{ ownerId: userId }, { id: { in: [...sharedRoleByRoomId.keys()] } }] },
+          ...(cursor
+            ? [
                 {
-                  AND: [
-                    { createdAt: new Date(cursor.createdAt) },
-                    { id: { lt: cursor.id } },
+                  OR: [
+                    { createdAt: { lt: new Date(cursor.createdAt) } },
+                    {
+                      AND: [
+                        { createdAt: new Date(cursor.createdAt) },
+                        { id: { lt: cursor.id } },
+                      ],
+                    },
                   ],
                 },
-              ],
-            }
-          : {}),
+              ]
+            : []),
+        ],
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: query.limit + 1,
@@ -107,7 +131,12 @@ export class DataRoomsService {
     const last = page.at(-1);
 
     return {
-      items: page.map((room) => toDataRoomListItemDto(room, 'OWNER')),
+      items: page.map((room) =>
+        toDataRoomListItemDto(
+          room,
+          room.ownerId === userId ? 'OWNER' : (sharedRoleByRoomId.get(room.id) ?? 'VIEWER'),
+        ),
+      ),
       nextCursor:
         hasMore && last
           ? encodeCursor({ createdAt: last.createdAt.toISOString(), id: last.id })
@@ -115,8 +144,13 @@ export class DataRoomsService {
     };
   }
 
-  async get(userId: string, id: string) {
-    await this.accessControl.requireAccess(userId, 'DATA_ROOM', id, 'OWNER');
+  /**
+   * `VIEWER` minimum, not `OWNER` — this is a read, so the owner, an `EDITOR`/`VIEWER`
+   * grantee, and an anonymous public-link visitor (`userId: null`) can all reach it. See
+   * FoldersService.get's identical note; `update`/`delete` stay `OWNER`-only.
+   */
+  async get(userId: string | null, id: string) {
+    await this.accessControl.requireAccess(userId, 'DATA_ROOM', id, 'VIEWER');
     return toDataRoomDto(await this.findOrThrow(id));
   }
 

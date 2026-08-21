@@ -5,9 +5,10 @@ import type { ShareRole } from '@dataroom/database';
  * way whether the resource doesn't exist or exists but isn't shared with them; see
  * `AccessControlService`'s doc comment for why that's deliberate.
  *
- * `OWNER` is strictly stronger than any `ShareRole`. Iteration 5 adds the second branch
- * that can produce `VIEWER`/`EDITOR` here — nothing outside `AccessControlService`
- * changes when it does.
+ * `OWNER` is strictly stronger than any `ShareRole`. `OWNER` only ever comes from
+ * matching `DataRoom.ownerId`; `VIEWER`/`EDITOR` come from a `Share` — direct, inherited
+ * from an ancestor folder, inherited from the Data Room, or a public link — resolved by
+ * `AccessControlService`. Nothing outside that class needs to know which.
  */
 export type AccessLevel = 'OWNER' | ShareRole | null;
 

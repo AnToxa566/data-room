@@ -63,12 +63,21 @@ export type ShareResourceType = z.infer<typeof ShareResourceTypeSchema>;
 export const ShareRoleSchema = z.enum(['VIEWER', 'EDITOR']);
 export type ShareRole = z.infer<typeof ShareRoleSchema>;
 
+/**
+ * Discriminates the two share types. `EMAIL` populates `granteeEmail`/`granteeUserId`;
+ * `PUBLIC` populates neither — an active `PUBLIC` share simply grants `role` to anyone,
+ * authenticated or not. There is no token in this shape: a shared resource's URL is the
+ * same regardless of `mode` (see ARCHITECTURE.md §4, §8).
+ */
+export const ShareModeSchema = z.enum(['EMAIL', 'PUBLIC']);
+export type ShareMode = z.infer<typeof ShareModeSchema>;
+
 export const ShareSchema = z.object({
   id: z.string().uuid(),
   resourceType: ShareResourceTypeSchema,
   resourceId: z.string().uuid(),
   role: ShareRoleSchema,
-  linkToken: z.string().nullable(),
+  mode: ShareModeSchema,
   granteeEmail: z.string().email().nullable(),
   granteeUserId: z.string().uuid().nullable(),
   createdById: z.string().uuid(),

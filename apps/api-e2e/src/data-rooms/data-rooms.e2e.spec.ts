@@ -161,7 +161,7 @@ describe('Data Rooms (e2e)', () => {
   });
 
   describe('Authentication', () => {
-    it('401s every endpoint without a session cookie', async () => {
+    it('401s every mutating/listing endpoint without a session cookie', async () => {
       const { cookie } = await createUserAndCookie('for-401-fixture');
       const room = await createRoom(cookie, 'Fixture Room');
 
@@ -170,12 +170,24 @@ describe('Data Rooms (e2e)', () => {
         .send({ name: 'x' })
         .expect(401);
       await request(app.getHttpServer()).get('/api/data-rooms').expect(401);
-      await request(app.getHttpServer()).get(`/api/data-rooms/${room.id}`).expect(401);
       await request(app.getHttpServer())
         .patch(`/api/data-rooms/${room.id}`)
         .send({ name: 'x' })
         .expect(401);
       await request(app.getHttpServer()).delete(`/api/data-rooms/${room.id}`).expect(401);
+    });
+
+    // `GET /data-rooms/:id` is deliberately reachable without a session cookie — see
+    // ARCHITECTURE.md §4's public-link sharing. A caller with no cookie is anonymous,
+    // not unauthorized; without a matching public share, the resource is 404 (not
+    // 401 or 403) — identical to any other resource an anonymous caller can't see, per
+    // ARCHITECTURE.md's "invisible resource" rule. Positive anonymous-access coverage
+    // (an active public share succeeding) lives in shares.e2e.spec.ts.
+    it('404s (not 401) GET /data-rooms/:id without a session cookie and no public share', async () => {
+      const { cookie } = await createUserAndCookie('for-anon-404-fixture');
+      const room = await createRoom(cookie, 'Fixture Room');
+
+      await request(app.getHttpServer()).get(`/api/data-rooms/${room.id}`).expect(404);
     });
   });
 });

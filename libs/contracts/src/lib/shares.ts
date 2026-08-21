@@ -89,15 +89,4 @@ export const sharesContract = c.router({
     },
     summary: 'Revoke a share (soft — sets revokedAt).',
   },
-  resolveByToken: {
-    method: 'GET',
-    path: '/shares/by-token/:token',
-    responses: {
-      200: ShareSchema,
-      // Not found, expired, and revoked all collapse into 404 — a public link never
-      // reveals which case it is. See ARCHITECTURE.md §7.
-      404: ErrorSchema,
-    },
-    summary: 'Resolve a public share link by its token.',
-  },
 });
