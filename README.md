@@ -554,6 +554,37 @@ service account's own identity (it needs `roles/iam.serviceAccountTokenCreator` 
 itself). See [ARCHITECTURE.md](./ARCHITECTURE.md)'s decision log and the "Local only"
 env table above.
 
+### Deploying to Cloud Run
+
+`npm run deploy:api` (`scripts/deploy-api.sh`) builds `apps/api/Dockerfile` via Cloud
+Build (`apps/api/cloudbuild.yaml` — needed because the Dockerfile's build context is the
+repo root but the file itself lives under `apps/api/`, which plain
+`gcloud run deploy --source` can't express) and points the Cloud Run service at the
+resulting image. It does not set the service's runtime env vars (`DATABASE_URL`,
+`JWT_SECRET`, ...) or run migrations — those are managed separately, same as the manual
+build above (`gcloud run services update --set-env-vars` / `--update-secrets`, or the
+Console).
+
+Deploys into the same GCP project as `GCS_PROJECT_ID` (no separate "which project" var).
+Set `CLOUD_RUN_REGION` and `CLOUD_RUN_SERVICE` once in your own `.env` (see
+`.env.example`) — the script loads it automatically, so every later deploy is just:
+
+```bash
+npm run deploy:api
+```
+
+A var already exported in the calling shell overrides `.env` for that one run, e.g. to
+deploy a different service without editing `.env`:
+
+```bash
+CLOUD_RUN_SERVICE=dataroom-api-staging npm run deploy:api
+```
+
+Requires `gcloud auth login` (or equivalent ADC) with permission to submit Cloud Builds
+and deploy to Cloud Run in that project, plus `roles/artifactregistry.admin` (or
+equivalent) the first time — the script creates the Artifact Registry Docker repo
+(`ARTIFACT_REPO`, default `cloud-run-source-deploy`) itself if it doesn't exist yet.
+
 ### Migrations
 
 Never run from the container. Applied from a developer machine, against the direct

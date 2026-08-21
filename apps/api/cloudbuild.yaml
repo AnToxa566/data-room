@@ -1,0 +1,21 @@
+# Used by `npm run deploy:api` (scripts/deploy-api.sh) via `gcloud builds submit`.
+#
+# Not a plain `gcloud run deploy --source .` because apps/api/Dockerfile's build
+# context is the repo root (npm workspaces), while the Dockerfile itself lives at
+# apps/api/Dockerfile — `--source` only auto-detects a Dockerfile at the root of the
+# source it's given, so a custom path + root context needs an explicit build step.
+#
+# --platform=linux/amd64 mirrors README.md "Deployment": Cloud Run does not run arm64
+# images, so an Apple Silicon build machine still has to force amd64 here.
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "--platform=linux/amd64"
+      - "-f"
+      - "apps/api/Dockerfile"
+      - "-t"
+      - "$_IMAGE"
+      - "."
+images:
+  - "$_IMAGE"
