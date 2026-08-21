@@ -25,6 +25,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const myRooms = dataRooms.data?.body.items.map((room) => ({
     id: room.id,
     name: room.name,
+    rootFolderId: room.rootFolderId,
   }));
 
   return (

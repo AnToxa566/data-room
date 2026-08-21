@@ -223,6 +223,32 @@ describe('HomePage — populated state', () => {
     },
   ];
 
+  it('navigates to the room\'s root folder when its name is clicked in the table', async () => {
+    stubDataRoomsApi(rooms);
+    const { router } = renderRouterAt('/home', {
+      status: 'authenticated',
+      user: mockUser,
+    });
+
+    const page = await screen.findByTestId('home-page');
+    fireEvent.click(await within(page).findByText('Project Halyard'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/folders/folder-1'));
+  });
+
+  it('navigates to the room\'s root folder when its sidebar nav entry is clicked', async () => {
+    stubDataRoomsApi(rooms);
+    const { router } = renderRouterAt('/home', {
+      status: 'authenticated',
+      user: mockUser,
+    });
+
+    const nav = await screen.findByRole('navigation', { name: 'Your Data Rooms' });
+    fireEvent.click(await within(nav).findByText('Project Anchorage'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/folders/folder-2'));
+  });
+
   it('lists owned rooms in the sidebar nav and the "Owned by you" table, with Share still inert', async () => {
     stubDataRoomsApi(rooms);
     const { router } = renderRouterAt('/home', {
