@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Archive, MoreVertical } from 'lucide-react';
 
 import type { DataRoomListItem } from '@dataroom/contracts';
@@ -10,6 +11,9 @@ import {
   DropdownMenuTrigger,
 } from '@dataroom/ui';
 
+import { DeleteDataRoomDialog } from './delete-data-room-dialog';
+import { RenameDataRoomDialog } from './rename-data-room-dialog';
+
 const dateFormatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' });
 
 interface HomeDataRoomsTableProps {
@@ -21,10 +25,16 @@ interface HomeDataRoomsTableProps {
  * "Size" columns — `DataRoomListItem` carries neither (nothing computes them yet), so this
  * shows "Created" instead; see the plan doc for why. Row names are deliberately
  * non-interactive (no click-to-open, no redirect) — that's explicitly out of scope for
- * this pass, unlike the "New Data Room" CTAs. Quick actions (Rename/Share/Delete) open but
- * have no `onSelect` handlers, per the same scope.
+ * this pass, unlike the "New Data Room" CTAs. Rename and Delete are wired to their own
+ * modals below (one controlled instance each, parameterized by `renameTarget`/
+ * `deleteTarget` — same "single shared dialog" shape as `CreateDataRoomDialog`, just
+ * keyed to whichever row's quick action was used). Share remains inert — still out of
+ * scope.
  */
 export function HomeDataRoomsTable({ rooms }: HomeDataRoomsTableProps) {
+  const [renameTarget, setRenameTarget] = useState<DataRoomListItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DataRoomListItem | null>(null);
+
   return (
     <section className="pt-7" aria-labelledby="owned-by-you-heading">
       <h2
@@ -68,15 +78,37 @@ export function HomeDataRoomsTable({ rooms }: HomeDataRoomsTableProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem>Rename</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setRenameTarget(room)}>
+                  Rename
+                </DropdownMenuItem>
                 <DropdownMenuItem>Share</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive">Delete</DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => setDeleteTarget(room)}
+                >
+                  Delete
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
       ))}
+
+      <RenameDataRoomDialog
+        room={renameTarget}
+        open={!!renameTarget}
+        onOpenChange={(open) => {
+          if (!open) setRenameTarget(null);
+        }}
+      />
+      <DeleteDataRoomDialog
+        room={deleteTarget}
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      />
     </section>
   );
 }

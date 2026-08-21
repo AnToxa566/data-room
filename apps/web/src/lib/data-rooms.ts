@@ -28,3 +28,23 @@ export function useCreateDataRoomMutation() {
     },
   });
 }
+
+/** Same invalidation shape as `useCreateDataRoomMutation` — the caller (`RenameDataRoomDialog`)
+ * adds its own `onSuccess` via `mutate()`'s second argument to close the dialog and toast. */
+export function useUpdateDataRoomMutation() {
+  return tsr.dataRooms.update.useMutation({
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: DATA_ROOMS_LIST_QUERY_KEY });
+    },
+  });
+}
+
+/** Same invalidation shape as `useCreateDataRoomMutation` — the caller (`DeleteDataRoomDialog`)
+ * adds its own `onSuccess` via `mutate()`'s second argument to close the dialog and toast. */
+export function useDeleteDataRoomMutation() {
+  return tsr.dataRooms.delete.useMutation({
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: DATA_ROOMS_LIST_QUERY_KEY });
+    },
+  });
+}

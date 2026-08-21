@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 
+import type { DataRoomListItem } from '@dataroom/contracts';
 import {
   Button,
   Dialog,
@@ -10,44 +11,63 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
+  useToast,
 } from '@dataroom/ui';
 
-import { useCreateDataRoomMutation } from '../lib/data-rooms';
+import { useUpdateDataRoomMutation } from '../lib/data-rooms';
 import { errorMessage } from '../lib/error-message';
 
-interface CreateDataRoomDialogProps {
+interface RenameDataRoomDialogProps {
+  room: DataRoomListItem | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
 /**
- * The "New Data Room" modal, opened from both `HomeHeader` and `HomeEmptyState`. Fully
- * controlled by the caller so one dialog instance (and one mutation) serves both CTAs —
- * see routes/home-route.tsx.
+ * The "Rename" modal for a Data Room, opened from its row's quick actions in
+ * `HomeDataRoomsTable`. One controlled instance serves every row — see that file for
+ * how `room` is set. Structurally mirrors `CreateDataRoomDialog`: controlled
+ * `open`/`onOpenChange`, local form state reset on close, submit guarded on
+ * `mutation.isPending`, close blocked while in flight, inline error rendering.
+ *
+ * Unlike folder/file renames, a Data Room has no name-uniqueness constraint at all
+ * (`libs/database/prisma/schema.prisma`'s `DataRoom` model has no `@@unique` on
+ * `name`) — so there's no client-side conflict check to do here, only required/trimmed
+ * validation plus whatever the server happens to reject.
  */
-export function CreateDataRoomDialog({ open, onOpenChange }: CreateDataRoomDialogProps) {
+export function RenameDataRoomDialog({ room, open, onOpenChange }: RenameDataRoomDialogProps) {
   const [name, setName] = useState('');
-  const mutation = useCreateDataRoomMutation();
+  const mutation = useUpdateDataRoomMutation();
+  const { toast } = useToast();
 
-  // Reset for the next time the dialog opens, whether it closed via success, Cancel, the
-  // close button, Escape, or an overlay click.
+  // Reset for the next time the dialog opens, whether it closed via success, Cancel,
+  // the close button, Escape, or an overlay click — and re-seed from whichever room it
+  // opens for next.
   useEffect(() => {
-    if (!open) {
+    if (open && room) {
+      setName(room.name);
+    } else if (!open) {
       setName('');
       mutation.reset();
     }
-    // `mutation` is a fresh object every render (react-query); only `open` should re-run this.
+    // `mutation` is a fresh object every render (react-query); only `open`/`room` should
+    // re-run this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, room]);
 
   const trimmed = name.trim();
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!trimmed || mutation.isPending) return;
+    if (!room || !trimmed || trimmed === room.name || mutation.isPending) return;
     mutation.mutate(
-      { body: { name: trimmed } },
-      { onSuccess: () => onOpenChange(false) },
+      { params: { id: room.id }, body: { name: trimmed } },
+      {
+        onSuccess: () => {
+          onOpenChange(false);
+          toast(`Renamed to "${trimmed}"`);
+        },
+      },
     );
   }
 
@@ -55,7 +75,7 @@ export function CreateDataRoomDialog({ open, onOpenChange }: CreateDataRoomDialo
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (mutation.isPending) return; // don't let an in-flight create be abandoned
+        if (mutation.isPending) return; // don't let an in-flight rename be abandoned
         onOpenChange(next);
       }}
     >
@@ -69,16 +89,16 @@ export function CreateDataRoomDialog({ open, onOpenChange }: CreateDataRoomDialo
       >
         <form onSubmit={handleSubmit} className="contents">
           <DialogHeader>
-            <DialogTitle>New Data Room</DialogTitle>
-            <DialogDescription>One room per deal. You can rename it later.</DialogDescription>
+            <DialogTitle>Rename Data Room</DialogTitle>
+            <DialogDescription>Choose a new name for this Data Room.</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-1.5">
-            <label htmlFor="new-data-room-name" className="text-sm font-medium text-foreground">
+            <label htmlFor="rename-data-room-name" className="text-sm font-medium text-foreground">
               Data Room name
             </label>
             <Input
-              id="new-data-room-name"
+              id="rename-data-room-name"
               autoFocus
               value={name}
               onChange={(event) => setName(event.target.value)}
@@ -102,11 +122,11 @@ export function CreateDataRoomDialog({ open, onOpenChange }: CreateDataRoomDialo
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={!trimmed || mutation.isPending}>
+            <Button type="submit" disabled={!trimmed || trimmed === room?.name || mutation.isPending}>
               {mutation.isPending && (
                 <Loader2 className="size-4 animate-spin" aria-hidden="true" />
               )}
-              {mutation.isPending ? 'Creating…' : 'Create Data Room'}
+              {mutation.isPending ? 'Saving…' : 'Save'}
             </Button>
           </DialogFooter>
         </form>

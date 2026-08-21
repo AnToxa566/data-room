@@ -1,5 +1,7 @@
 import { Outlet, createRootRouteWithContext } from '@tanstack/react-router';
 
+import { ToastProvider } from '@dataroom/ui';
+
 import type { SettledAuthState } from '../lib/auth';
 
 export interface RouterContext {
@@ -21,8 +23,10 @@ export const rootRoute = createRootRouteWithContext<RouterContext>()({
  */
 function RootLayout() {
   return (
-    <div className="flex min-h-dvh flex-col bg-background text-foreground">
-      <Outlet />
-    </div>
+    <ToastProvider>
+      <div className="flex min-h-dvh flex-col bg-background text-foreground">
+        <Outlet />
+      </div>
+    </ToastProvider>
   );
 }

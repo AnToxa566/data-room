@@ -11,7 +11,8 @@
       "Bash(npx --no-install chromium-cli --version)",
       "Bash(command -v chromium-cli)",
       "Bash(find / -maxdepth 6 -iname \"*chromium-cli*\")",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(xargs -I{} basename {})"
     ]
   },
   "enabledPlugins": {

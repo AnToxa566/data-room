@@ -35,8 +35,9 @@ function stubDataRoomsApi(initialRooms: DataRoomListItem[] = []) {
   ) => {
     const url = typeof input === 'string' ? input : input.toString();
     const method = (init?.method ?? 'GET').toUpperCase();
+    const idMatch = /\/data-rooms\/([^/?]+)/.exec(url);
 
-    if (url.includes('/data-rooms') && method === 'GET') {
+    if (url.includes('/data-rooms') && method === 'GET' && !idMatch) {
       return jsonResponse({ items: rooms, nextCursor: null });
     }
     if (url.includes('/data-rooms') && method === 'POST') {
@@ -51,6 +52,26 @@ function stubDataRoomsApi(initialRooms: DataRoomListItem[] = []) {
       };
       rooms.push({ ...room, access: 'OWNER' });
       return jsonResponse(room, 201);
+    }
+    if (idMatch && method === 'PATCH') {
+      const id = idMatch[1];
+      const body = JSON.parse((init?.body as string | undefined) ?? '{}') as { name: string };
+      const index = rooms.findIndex((room) => room.id === id);
+      if (index === -1) return jsonResponse({ message: 'Data Room not found.' }, 404);
+      // A new object, never mutating the room passed in by the caller — `rooms` starts
+      // as a shallow copy of `initialRooms`, so mutating an element in place would leak
+      // the rename into whatever fixture array the test suite reuses across cases.
+      const updated = { ...rooms[index], name: body.name, updatedAt: '2026-01-03T00:00:00.000Z' };
+      rooms[index] = updated;
+      const { access: _access, ...room } = updated;
+      return jsonResponse(room satisfies DataRoom);
+    }
+    if (idMatch && method === 'DELETE') {
+      const id = idMatch[1];
+      const index = rooms.findIndex((room) => room.id === id);
+      if (index === -1) return jsonResponse({ message: 'Data Room not found.' }, 404);
+      rooms.splice(index, 1);
+      return jsonResponse({ success: true });
     }
 
     throw new Error(`Unhandled fetch in test: ${method} ${url}`);
@@ -202,7 +223,7 @@ describe('HomePage — populated state', () => {
     },
   ];
 
-  it('lists owned rooms in the sidebar nav and the "Owned by you" table, with inert quick actions', async () => {
+  it('lists owned rooms in the sidebar nav and the "Owned by you" table, with Share still inert', async () => {
     stubDataRoomsApi(rooms);
     const { router } = renderRouterAt('/home', {
       status: 'authenticated',
@@ -231,7 +252,144 @@ describe('HomePage — populated state', () => {
     const deleteItem = screen.getByRole('menuitem', { name: 'Delete' });
     fireEvent.click(deleteItem);
 
-    // No handlers wired up yet — selecting a quick action does nothing observable.
+    // Delete opens its confirm dialog (see the "deleting a Data Room" describe block
+    // below for the full flow) — Share alone stays a no-op.
+    expect(await screen.findByRole('heading', { name: /Delete the Data Room/ })).toBeTruthy();
     expect(router.state.location.pathname).toBe('/home');
+  });
+
+  function openRowMenu(roomName: string) {
+    fireEvent.pointerDown(screen.getByRole('button', { name: `More actions for ${roomName}` }), {
+      button: 0,
+    });
+  }
+
+  it('renames a room: disables Save and shows a loading label while in flight, closes the dialog, and toasts on success', async () => {
+    // Held open deliberately — same reasoning as the create-room pending test above: a
+    // PATCH resolved as fast as the GET makes the pending state too brief to observe.
+    let resolvePatch!: (response: Response) => void;
+    const pendingPatch = new Promise<Response>((resolve) => {
+      resolvePatch = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        const method = (init?.method ?? 'GET').toUpperCase();
+        if (url.includes('/data-rooms') && method === 'GET') {
+          return jsonResponse({ items: rooms, nextCursor: null });
+        }
+        if (url.includes('/data-rooms/') && method === 'PATCH') {
+          return pendingPatch;
+        }
+        throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+      }),
+    );
+
+    renderRouterAt('/home', { status: 'authenticated', user: mockUser });
+
+    // "Project Halyard" appears in both the sidebar nav and the table — scope to the
+    // table so queries stay unambiguous.
+    const page = await screen.findByTestId('home-page');
+    await within(page).findByText('Project Halyard');
+    openRowMenu('Project Halyard');
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+
+    const nameInput = await screen.findByLabelText('Data Room name');
+    expect(nameInput).toHaveProperty('value', 'Project Halyard');
+    fireEvent.change(nameInput, { target: { value: 'Project Halyard II' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    const savingButton = await screen.findByRole('button', { name: 'Saving…' });
+    expect(savingButton).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveProperty('disabled', true);
+
+    resolvePatch(
+      jsonResponse({
+        id: rooms[0].id,
+        name: 'Project Halyard II',
+        ownerId: mockUser.id,
+        rootFolderId: rooms[0].rootFolderId,
+        createdAt: rooms[0].createdAt,
+        updatedAt: '2026-01-03T00:00:00.000Z',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Rename Data Room' })).toBeNull(),
+    );
+    expect(await screen.findByRole('status')).toHaveProperty(
+      'textContent',
+      'Renamed to "Project Halyard II"',
+    );
+  });
+
+  it('deletes a room: gates the button on typing the exact name, shows a loading label, closes the dialog, and toasts on success', async () => {
+    // Same reasoning as above — hold the DELETE open long enough to observe "Deleting…".
+    let resolveDelete!: (response: Response) => void;
+    const pendingDelete = new Promise<Response>((resolve) => {
+      resolveDelete = resolve;
+    });
+    const fetchMock = vi.fn(async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (url.includes('/data-rooms') && method === 'GET') {
+        return jsonResponse({ items: rooms, nextCursor: null });
+      }
+      if (url.includes('/data-rooms/') && method === 'DELETE') {
+        return pendingDelete;
+      }
+      throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderRouterAt('/home', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('home-page');
+    await within(page).findByText('Project Halyard');
+    openRowMenu('Project Halyard');
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+
+    const confirmInput = await screen.findByLabelText('Type the room name to confirm');
+    const deleteButton = screen.getByRole('button', { name: 'Delete Data Room' });
+    expect(deleteButton).toHaveProperty('disabled', true);
+
+    fireEvent.change(confirmInput, { target: { value: 'not quite right' } });
+    expect(deleteButton).toHaveProperty('disabled', true);
+
+    fireEvent.change(confirmInput, { target: { value: 'Project Halyard' } });
+    expect(deleteButton).toHaveProperty('disabled', false);
+
+    fireEvent.click(deleteButton);
+    const deletingButton = await screen.findByRole('button', { name: 'Deleting…' });
+    expect(deletingButton).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveProperty('disabled', true);
+
+    resolveDelete(jsonResponse({ success: true }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: /Delete the Data Room/ })).toBeNull(),
+    );
+    expect(await screen.findByRole('status')).toHaveProperty(
+      'textContent',
+      'Data Room "Project Halyard" deleted permanently',
+    );
+
+    const deleteCall = fetchMock.mock.calls.find(
+      ([, init]) => (init?.method ?? '').toUpperCase() === 'DELETE',
+    );
+    expect(deleteCall).toBeTruthy();
+    // Not asserted here: the row disappearing from the table. `useDeleteDataRoomMutation`
+    // invalidates via the `queryClient` singleton exported from `lib/api.ts` — the one
+    // `main.tsx` actually mounts `QueryClientProvider` with — but `renderRouterAt` gives
+    // every test its own fresh `QueryClient` (see its doc comment), so that invalidation
+    // never reaches this render's cache. Same pre-existing gap the create-room test above
+    // works around by not asserting the created room appears in the list either.
   });
 });
