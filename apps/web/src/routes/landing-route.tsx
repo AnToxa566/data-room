@@ -6,6 +6,7 @@ import { Button } from '@dataroom/ui';
 
 import { Header } from '../components/header';
 import { signInWithGoogle } from '../lib/auth';
+import { useDocumentTitle } from '../lib/document-title';
 import { rootRoute } from './root-route';
 
 type OAuthError = 'unverified_email' | 'oauth_failed';
@@ -64,6 +65,7 @@ function LandingPage() {
   const { error } = landingRoute.useSearch();
   const navigate = useNavigate();
   const [message, setMessage] = useState<string | null>(null);
+  useDocumentTitle('Data Red Rooms');
 
   useEffect(() => {
     if (!error) return;

@@ -150,6 +150,13 @@ describe('FolderPage — root, empty', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('sets the document title to the room name (root folder) once loaded', async () => {
+    stubFolderApi();
+    renderRouterAt('/folders/folder-1', { status: 'authenticated', user: mockUser });
+
+    await waitFor(() => expect(document.title).toBe('Project Halyard — Data Red Rooms'));
+  });
+
   it('opens the New folder dialog from either "New folder" action', async () => {
     stubFolderApi();
     const { router } = renderRouterAt('/folders/folder-1', {
@@ -530,5 +537,38 @@ describe('FolderPage — breadcrumb navigation', () => {
 
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Legal' }));
     await waitFor(() => expect(router.state.location.pathname).toBe('/folders/folder-2'));
+  });
+
+  describe('FolderPage — subfolder, empty', () => {
+    it('shows the "This folder is empty" state (not the Data Room empty state), with Upload left inert', async () => {
+      stubFolderTreeApi();
+      const { router } = renderRouterAt('/folders/folder-2', {
+        status: 'authenticated',
+        user: mockUser,
+      });
+
+      const page = await screen.findByTestId('folder-page');
+      expect(await within(page).findByText('This folder is empty')).toBeTruthy();
+      expect(within(page).queryByText(/^Nothing in .* yet$/)).toBeNull();
+
+      fireEvent.click(within(page).getByRole('button', { name: 'Upload PDFs' }));
+
+      // Upload is inert — still on the same page, no dialog opened.
+      expect(router.state.location.pathname).toBe('/folders/folder-2');
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('opens the New folder dialog from its "New folder" action', async () => {
+      stubFolderTreeApi();
+      renderRouterAt('/folders/folder-2', { status: 'authenticated', user: mockUser });
+
+      const page = await screen.findByTestId('folder-page');
+      await within(page).findByText('This folder is empty');
+      // Two "New folder" buttons on screen — one in the toolbar, one in the empty state.
+      const [, emptyStateButton] = within(page).getAllByRole('button', { name: 'New folder' });
+      fireEvent.click(emptyStateButton);
+
+      expect(await screen.findByRole('heading', { name: 'New folder' })).toBeTruthy();
+    });
   });
 });

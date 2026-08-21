@@ -4,9 +4,12 @@ import { createRoute, redirect } from '@tanstack/react-router';
 import { AppShell } from '../components/app-shell';
 import { CreateFolderDialog } from '../components/create-folder-dialog';
 import { FolderChildrenTable } from '../components/folder-children-table';
+import { FolderChildrenTableSkeleton } from '../components/folder-children-table-skeleton';
 import { FolderEmptyState } from '../components/folder-empty-state';
+import { FolderEmptySubfolderState } from '../components/folder-empty-subfolder-state';
 import { FolderToolbar } from '../components/folder-toolbar';
 import { useDataRoomsQuery } from '../lib/data-rooms';
+import { useDocumentTitle } from '../lib/document-title';
 import { useFolderChildrenQuery, useFolderQuery } from '../lib/folders';
 import { rootRoute } from './root-route';
 
@@ -34,11 +37,6 @@ function FolderPage() {
   // fixed constant, not the room's name (see `apps/api/src/data-rooms/data-rooms.service.ts`).
   const dataRooms = useDataRoomsQuery();
 
-  if (auth.status !== 'authenticated') return null;
-
-  const isPending = folder.isPending || children.isPending;
-  const isError = folder.isError || children.isError;
-
   const roomName =
     (folder.isSuccess &&
       dataRooms.data?.body.items.find((room) => room.id === folder.data.body.dataRoomId)
@@ -48,6 +46,14 @@ function FolderPage() {
   // The root folder's own `name` column is a fixed constant, not the room's name (see
   // `apps/api/src/data-rooms/data-rooms.service.ts`) — every other folder's `name` is real.
   const displayName = folder.data?.body.isRoot ? roomName : folder.data?.body.name || '';
+  // Also called unconditionally, before the early return — same reasoning as the queries
+  // above.
+  useDocumentTitle(displayName ? `${displayName} — Data Red Rooms` : 'Data Red Rooms');
+
+  if (auth.status !== 'authenticated') return null;
+
+  const isPending = folder.isPending || children.isPending;
+  const isError = folder.isError || children.isError;
 
   return (
     <AppShell user={auth.user} activeDataRoomId={folder.data?.body.dataRoomId}>
@@ -55,7 +61,7 @@ function FolderPage() {
         data-testid="folder-page"
         className="px-4 pt-4 pb-10 min-[900px]:px-10 min-[900px]:pt-7 min-[900px]:pb-14"
       >
-        {isPending && <p className="pt-14 text-sm text-muted-foreground">Loading…</p>}
+        {isPending && <FolderChildrenTableSkeleton />}
         {isError && (
           <p role="alert" className="pt-14 text-sm text-destructive">
             Couldn&apos;t load this folder. Try refreshing the page.
@@ -70,10 +76,14 @@ function FolderPage() {
               onNewFolder={() => setCreateFolderOpen(true)}
             />
             {children.data.body.items.length === 0 ? (
-              <FolderEmptyState
-                roomName={roomName}
-                onNewFolder={() => setCreateFolderOpen(true)}
-              />
+              folder.data.body.isRoot ? (
+                <FolderEmptyState
+                  roomName={roomName}
+                  onNewFolder={() => setCreateFolderOpen(true)}
+                />
+              ) : (
+                <FolderEmptySubfolderState onNewFolder={() => setCreateFolderOpen(true)} />
+              )
             ) : (
               <FolderChildrenTable items={children.data.body.items} />
             )}

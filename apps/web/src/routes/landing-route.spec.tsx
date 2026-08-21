@@ -26,4 +26,11 @@ describe('LandingPage', () => {
 
     await waitFor(() => expect(router.state.location.searchStr).toBe(''));
   });
+
+  it('sets the document title', async () => {
+    renderRouterAt('/', { status: 'unauthenticated' });
+
+    await screen.findByTestId('landing-page');
+    expect(document.title).toBe('Data Red Rooms');
+  });
 });

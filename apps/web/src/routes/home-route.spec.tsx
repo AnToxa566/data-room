@@ -99,6 +99,13 @@ describe('HomePage — empty state', () => {
     expect(await screen.findByText('Nothing shared with you')).toBeTruthy();
   });
 
+  it('sets the document title', async () => {
+    stubDataRoomsApi();
+    renderRouterAt('/home', { status: 'authenticated', user: mockUser });
+
+    await waitFor(() => expect(document.title).toBe('Home — Data Red Rooms'));
+  });
+
   it('opens the create-room dialog from either "New Data Room" action', async () => {
     stubDataRoomsApi();
     const { router } = renderRouterAt('/home', {

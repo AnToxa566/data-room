@@ -4,9 +4,11 @@ import { createRoute, redirect } from '@tanstack/react-router';
 import { AppShell } from '../components/app-shell';
 import { CreateDataRoomDialog } from '../components/create-data-room-dialog';
 import { HomeDataRoomsTable } from '../components/home-data-rooms-table';
+import { HomeDataRoomsTableSkeleton } from '../components/home-data-rooms-table-skeleton';
 import { HomeEmptyState } from '../components/home-empty-state';
 import { HomeHeader } from '../components/home-header';
 import { useDataRoomsQuery } from '../lib/data-rooms';
+import { useDocumentTitle } from '../lib/document-title';
 import { rootRoute } from './root-route';
 
 export const homeRoute = createRoute({
@@ -27,6 +29,7 @@ function HomePage() {
   // fire while `auth` is still resolving to its authenticated branch (see the `if` right
   // after): the query itself doesn't depend on `auth`.
   const dataRooms = useDataRoomsQuery();
+  useDocumentTitle('Home — Data Red Rooms');
 
   // `beforeLoad` above already redirects unauthenticated visitors away, so `auth` is
   // always the authenticated branch by the time this renders.
@@ -39,9 +42,7 @@ function HomePage() {
         className="px-4 pt-4 pb-10 min-[900px]:px-10 min-[900px]:pt-7 min-[900px]:pb-14"
       >
         <HomeHeader onNewRoom={() => setCreateOpen(true)} />
-        {dataRooms.isPending && (
-          <p className="pt-14 text-sm text-muted-foreground">Loading your Data Rooms…</p>
-        )}
+        {dataRooms.isPending && <HomeDataRoomsTableSkeleton />}
         {dataRooms.isError && (
           <p role="alert" className="pt-14 text-sm text-destructive">
             Couldn&apos;t load your Data Rooms. Try refreshing the page.
