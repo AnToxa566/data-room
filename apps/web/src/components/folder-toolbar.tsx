@@ -4,6 +4,7 @@ import type { Breadcrumb } from '@dataroom/contracts';
 import { Button } from '@dataroom/ui';
 
 import { FolderBreadcrumbs } from './folder-breadcrumbs';
+import { UploadButton } from './upload-button';
 
 interface FolderToolbarProps {
   /** The Data Room's display name — used both as the root segment of the breadcrumb trail
@@ -15,6 +16,8 @@ interface FolderToolbarProps {
   /** `folder.data.body.breadcrumbs` — root-first, current folder last. Passed straight
    * through to `FolderBreadcrumbs`. */
   breadcrumbs: Breadcrumb[];
+  /** The current folder — where `UploadButton` uploads into. */
+  folderId: string;
   /** Opens `CreateFolderDialog` — see `routes/folder-route.tsx`, which owns its open state. */
   onNewFolder: () => void;
 }
@@ -24,13 +27,15 @@ interface FolderToolbarProps {
  * itself (`Data Rooms > <Room> > … > <Folder>`, with ellipsis-collapsing past 5 segments) is
  * `FolderBreadcrumbs` — see that file for the collapsing rule.
  *
- * "New folder" opens `CreateFolderDialog`. Upload / Share are still inert (no
- * `onClick`) — wiring them is explicitly out of scope for this pass; see the plan doc.
+ * "New folder" opens `CreateFolderDialog`. "Upload" opens the native file picker via
+ * `UploadButton` — see `lib/upload-manager.tsx`. Share is still inert (no `onClick`) —
+ * wiring it up is out of scope for this pass.
  */
 export function FolderToolbar({
   roomName,
   displayName,
   breadcrumbs,
+  folderId,
   onNewFolder,
 }: FolderToolbarProps) {
   return (
@@ -49,10 +54,10 @@ export function FolderToolbar({
             <FolderPlus className="size-4" aria-hidden="true" />
             New folder
           </Button>
-          <Button variant="outline">
+          <UploadButton folderId={folderId} folderName={displayName} variant="outline">
             <Upload className="size-4" aria-hidden="true" />
             Upload
-          </Button>
+          </UploadButton>
           <Button variant="default">
             <Share2 className="size-4" aria-hidden="true" />
             Share

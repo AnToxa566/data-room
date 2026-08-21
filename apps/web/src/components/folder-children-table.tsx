@@ -1,5 +1,16 @@
 import { useState } from 'react';
-import { ChevronRight, Folder, MoreVertical, Pencil, Share2, Trash2 } from 'lucide-react';
+import {
+  ChevronRight,
+  Download,
+  Eye,
+  FileText,
+  Folder,
+  MoreVertical,
+  Move,
+  Pencil,
+  Share2,
+  Trash2,
+} from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 
 import type { FolderChildItem } from '@dataroom/contracts';
@@ -11,6 +22,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@dataroom/ui';
+
+import { formatBytes } from '../lib/format-bytes';
 
 import { DeleteFolderDialog } from './delete-folder-dialog';
 import { RenameFolderDialog } from './rename-folder-dialog';
@@ -37,9 +50,13 @@ interface FolderChildrenTableProps {
  * Room table's own Share item. The design gates Move/Download to file rows only
  * (`sc-if row.isFile`), so folder rows never show them.
  *
- * `kind: 'file'` rows are unreachable today — nothing can create a file child yet (no
- * upload UI) — so that branch is a minimal stub (name, raw size, modified date, no
- * `Link`, no kebab menu) rather than a fully-built file row. Revisit once upload exists.
+ * `kind: 'file'` rows: uploads now populate them (see `lib/upload-manager.tsx`), so this
+ * renders the full design row — icon, formatted size, modified date, and a kebab menu in
+ * the design's order (View, Rename, Move, Share, Download, Delete). Every item in that
+ * menu is intentionally inert (no `onSelect`) — wiring them up is out of scope for this
+ * pass, same treatment the folder row's own Share item already gets. There's also no
+ * file-detail route yet, so unlike a folder row, a file row's name is plain text, not a
+ * `Link` — "View" has nowhere to navigate to today.
  */
 export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProps) {
   const [renameTarget, setRenameTarget] = useState<Extract<
@@ -118,19 +135,61 @@ export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProp
             </div>
           </div>
         ) : (
-          // Unreachable today — see the docblock above.
           <div
             key={item.id}
-            className="grid grid-cols-[minmax(0,1fr)_44px] items-center gap-x-2 border-b border-border px-2 min-h-11.5 min-[900px]:grid-cols-[minmax(0,1fr)_120px_140px_44px]"
+            className="grid grid-cols-[minmax(0,1fr)_44px] items-center gap-x-2 border-b border-border px-2 min-h-11.5 hover:bg-foreground/4 min-[900px]:grid-cols-[minmax(0,1fr)_120px_140px_44px]"
           >
-            <span className="truncate py-1.5 text-sm text-foreground">{item.name}</span>
+            <div className="flex min-w-0 items-center gap-2.5 py-1.5">
+              <FileText className="size-4.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="truncate text-sm text-foreground">{item.name}</span>
+            </div>
             <div className="hidden text-[13px] text-foreground/85 tabular-nums min-[900px]:block">
-              {item.size}
+              {formatBytes(item.size)}
             </div>
             <div className="hidden text-[13px] text-foreground/85 tabular-nums min-[900px]:block">
               {dateFormatter.format(new Date(item.updatedAt))}
             </div>
-            <div />
+            <div className="flex justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="muted"
+                    size="icon"
+                    aria-label={`More actions for ${item.name}`}
+                  >
+                    <MoreVertical className="size-4.5" aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem>
+                    <Eye aria-hidden="true" />
+                    View
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Pencil aria-hidden="true" />
+                    Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Move aria-hidden="true" />
+                    Move
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Share2 aria-hidden="true" />
+                    Share
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Download aria-hidden="true" />
+                    Download
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive">
+                    <Trash2 aria-hidden="true" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         ),
       )}

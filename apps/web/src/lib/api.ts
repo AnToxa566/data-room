@@ -1,4 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
+import { initClient } from '@ts-rest/core';
 import { initTsrReactQuery } from '@ts-rest/react-query/v5';
 
 import { contract } from '@dataroom/contracts';
@@ -11,6 +12,21 @@ import { contract } from '@dataroom/contracts';
 export const API_BASE = import.meta.env.VITE_API_URL;
 
 export const tsr = initTsrReactQuery(contract, {
+  baseUrl: API_BASE,
+  credentials: 'include',
+});
+
+/**
+ * A second, non-React client for calls that don't originate from a component's render —
+ * `lib/upload-manager.tsx`'s queue processor drives `files.createUploadUrl`/`files.complete`
+ * itself (one file's phase 1/phase 3 calls happen whenever its turn in the concurrency-capped
+ * queue comes up, not in response to a single click), so those two calls go through this
+ * instead of a `tsr.*.useMutation()` hook. Unlike the react-query wrapper (see the comment
+ * below), this client resolves with `{ status, body }` for every status declared in the
+ * contract — including 409/413 — rather than throwing, which is exactly what the upload
+ * manager's per-error-kind branching needs.
+ */
+export const apiClient = initClient(contract, {
   baseUrl: API_BASE,
   credentials: 'include',
 });

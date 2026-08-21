@@ -70,6 +70,7 @@ function FolderPage() {
         {folder.isSuccess && children.isSuccess && (
           <>
             <FolderToolbar
+              folderId={id}
               roomName={roomName}
               displayName={displayName}
               breadcrumbs={folder.data.body.breadcrumbs}
@@ -78,11 +79,16 @@ function FolderPage() {
             {children.data.body.items.length === 0 ? (
               folder.data.body.isRoot ? (
                 <FolderEmptyState
+                  folderId={id}
                   roomName={roomName}
                   onNewFolder={() => setCreateFolderOpen(true)}
                 />
               ) : (
-                <FolderEmptySubfolderState onNewFolder={() => setCreateFolderOpen(true)} />
+                <FolderEmptySubfolderState
+                  folderId={id}
+                  folderName={displayName}
+                  onNewFolder={() => setCreateFolderOpen(true)}
+                />
               )
             ) : (
               <FolderChildrenTable items={children.data.body.items} parentId={id} />

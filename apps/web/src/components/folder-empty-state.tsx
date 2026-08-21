@@ -2,6 +2,8 @@ import { FolderPlus, Upload } from 'lucide-react';
 
 import { Button } from '@dataroom/ui';
 
+import { UploadButton } from './upload-button';
+
 const SETUP_STEPS = [
   { index: '01', text: 'One folder per workstream — Financial, Legal, Commercial, Tax.' },
   { index: '02', text: 'PDFs only, up to 100 MB each. Drag them onto the list to upload.' },
@@ -11,6 +13,8 @@ const SETUP_STEPS = [
 interface FolderEmptyStateProps {
   /** The Data Room's display name, for the "Nothing in {name} yet" heading. */
   roomName: string;
+  /** The root folder — where `UploadButton` uploads into. */
+  folderId: string;
   /** Opens `CreateFolderDialog` — see `routes/folder-route.tsx`, which owns its open state. */
   onNewFolder: () => void;
 }
@@ -19,9 +23,10 @@ interface FolderEmptyStateProps {
  * The "Browser root — empty state" design: two columns, left is the CTA panel (mirrors
  * `HomeEmptyState`'s shape but with folder-scoped copy and two buttons instead of one),
  * right is a static "how rooms are usually set up" reference list. "New folder" opens
- * `CreateFolderDialog`, same as `FolderToolbar`'s button; "Upload PDFs" stays inert.
+ * `CreateFolderDialog`, same as `FolderToolbar`'s button; "Upload PDFs" opens the native
+ * file picker via `UploadButton`.
  */
-export function FolderEmptyState({ roomName, onNewFolder }: FolderEmptyStateProps) {
+export function FolderEmptyState({ roomName, folderId, onNewFolder }: FolderEmptyStateProps) {
   return (
     <div className="grid grid-cols-1 items-start gap-10 border-b-2 border-border py-13 min-[900px]:grid-cols-2">
       <div>
@@ -40,10 +45,10 @@ export function FolderEmptyState({ roomName, onNewFolder }: FolderEmptyStateProp
             <FolderPlus className="size-4" aria-hidden="true" />
             New folder
           </Button>
-          <Button variant="outline">
+          <UploadButton folderId={folderId} folderName={roomName} variant="outline">
             <Upload className="size-4" aria-hidden="true" />
             Upload PDFs
-          </Button>
+          </UploadButton>
         </div>
       </div>
       <div className="border-t border-border pt-6 min-[900px]:border-t-0 min-[900px]:border-l-2 min-[900px]:pt-0 min-[900px]:pl-6">

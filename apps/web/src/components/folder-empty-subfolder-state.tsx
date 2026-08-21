@@ -2,7 +2,13 @@ import { Upload } from 'lucide-react';
 
 import { Button } from '@dataroom/ui';
 
+import { UploadButton } from './upload-button';
+
 interface FolderEmptySubfolderStateProps {
+  /** The current folder — where `UploadButton` uploads into, and its display name for
+   * tray copy ("Uploaded to {folderName}"). */
+  folderId: string;
+  folderName: string;
   /** Opens `CreateFolderDialog` — see `routes/folder-route.tsx`, which owns its open state. */
   onNewFolder: () => void;
 }
@@ -14,10 +20,14 @@ interface FolderEmptySubfolderStateProps {
  * "New folder" button, the design gives this one no icon — matched here rather than
  * "fixed" to be consistent, since this is a direct transcription of that state.
  *
- * "Upload PDFs" stays inert, same as every other Upload button in the app (wiring it up is
- * out of scope for this pass). "New folder" opens `CreateFolderDialog`.
+ * "Upload PDFs" opens the native file picker via `UploadButton`. "New folder" opens
+ * `CreateFolderDialog`.
  */
-export function FolderEmptySubfolderState({ onNewFolder }: FolderEmptySubfolderStateProps) {
+export function FolderEmptySubfolderState({
+  folderId,
+  folderName,
+  onNewFolder,
+}: FolderEmptySubfolderStateProps) {
   return (
     <div className="max-w-[460px] py-13">
       <h2 className="mb-1.5 text-xl font-extrabold tracking-tight text-foreground">
@@ -27,10 +37,10 @@ export function FolderEmptySubfolderState({ onNewFolder }: FolderEmptySubfolderS
         Drag PDFs here to upload, or create a subfolder to keep the tree organised.
       </p>
       <div className="flex flex-wrap gap-2">
-        <Button variant="default">
+        <UploadButton folderId={folderId} folderName={folderName} variant="default">
           <Upload className="size-4" aria-hidden="true" />
           Upload PDFs
-        </Button>
+        </UploadButton>
         <Button variant="outline" onClick={onNewFolder}>
           New folder
         </Button>
