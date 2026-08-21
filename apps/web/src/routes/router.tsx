@@ -1,11 +1,12 @@
 import { createRouter } from '@tanstack/react-router';
 
+import { fileRoute } from './file-route';
 import { folderRoute } from './folder-route';
 import { homeRoute } from './home-route';
 import { landingRoute } from './landing-route';
 import { rootRoute, type RouterContext } from './root-route';
 
-const routeTree = rootRoute.addChildren([landingRoute, homeRoute, folderRoute]);
+const routeTree = rootRoute.addChildren([landingRoute, homeRoute, folderRoute, fileRoute]);
 
 /**
  * A factory, not a module-level singleton — this is what makes the router directly

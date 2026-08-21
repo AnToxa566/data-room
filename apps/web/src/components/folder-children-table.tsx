@@ -52,11 +52,11 @@ interface FolderChildrenTableProps {
  *
  * `kind: 'file'` rows: uploads now populate them (see `lib/upload-manager.tsx`), so this
  * renders the full design row — icon, formatted size, modified date, and a kebab menu in
- * the design's order (View, Rename, Move, Share, Download, Delete). Every item in that
- * menu is intentionally inert (no `onSelect`) — wiring them up is out of scope for this
- * pass, same treatment the folder row's own Share item already gets. There's also no
- * file-detail route yet, so unlike a folder row, a file row's name is plain text, not a
- * `Link` — "View" has nowhere to navigate to today.
+ * the design's order (View, Rename, Move, Share, Download, Delete). A file row's name and
+ * its menu's "View" both navigate to `routes/file-route.tsx` (`/files/$fileId`), same
+ * treatment a folder row's name/"Open" get. Rename/Move/Share/Download/Delete stay
+ * intentionally inert (no `onSelect`) — wiring them up is out of scope for this pass, same
+ * treatment the folder row's own Share item already gets.
  */
 export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProps) {
   const [renameTarget, setRenameTarget] = useState<Extract<
@@ -139,10 +139,14 @@ export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProp
             key={item.id}
             className="grid grid-cols-[minmax(0,1fr)_44px] items-center gap-x-2 border-b border-border px-2 min-h-11.5 hover:bg-foreground/4 min-[900px]:grid-cols-[minmax(0,1fr)_120px_140px_44px]"
           >
-            <div className="flex min-w-0 items-center gap-2.5 py-1.5">
+            <Link
+              to="/files/$fileId"
+              params={{ fileId: item.id }}
+              className="flex min-w-0 items-center gap-2.5 rounded-sm py-1.5 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
               <FileText className="size-4.5 shrink-0 text-muted-foreground" aria-hidden="true" />
               <span className="truncate text-sm text-foreground">{item.name}</span>
-            </div>
+            </Link>
             <div className="hidden text-[13px] text-foreground/85 tabular-nums min-[900px]:block">
               {formatBytes(item.size)}
             </div>
@@ -162,9 +166,11 @@ export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProp
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem>
-                    <Eye aria-hidden="true" />
-                    View
+                  <DropdownMenuItem asChild>
+                    <Link to="/files/$fileId" params={{ fileId: item.id }}>
+                      <Eye aria-hidden="true" />
+                      View
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem>
                     <Pencil aria-hidden="true" />

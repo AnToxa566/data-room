@@ -4,11 +4,17 @@ import { queryClient, tsr } from './api';
  * A folder plus its immediate children — the two requests the folder browser route
  * needs. Kept as two hooks (not one combined one) so each has its own react-query
  * loading/error state, same as `useDataRoomsQuery` does for the room list.
+ *
+ * `options.enabled` exists for `routes/file-route.tsx`: it needs the containing folder's
+ * `breadcrumbs`/`isRoot`/`name` for the back-button label, but doesn't know the folder id
+ * until its own file query resolves — same "gate on a value from an earlier query"
+ * reasoning as `useFolderStatsQuery` below.
  */
-export function useFolderQuery(id: string) {
+export function useFolderQuery(id: string, options?: { enabled?: boolean }) {
   return tsr.folders.get.useQuery({
     queryKey: ['folders', id],
     queryData: { params: { id } },
+    enabled: options?.enabled,
   });
 }
 
