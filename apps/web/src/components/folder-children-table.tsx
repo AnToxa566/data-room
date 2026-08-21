@@ -24,8 +24,12 @@ import {
 } from '@dataroom/ui';
 
 import { formatBytes } from '../lib/format-bytes';
+import { useDownloadFile } from '../lib/files';
 
+import { DeleteFileDialog } from './delete-file-dialog';
 import { DeleteFolderDialog } from './delete-folder-dialog';
+import { MoveFileDialog } from './move-file-dialog';
+import { RenameFileDialog } from './rename-file-dialog';
 import { RenameFolderDialog } from './rename-folder-dialog';
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' });
@@ -54,9 +58,10 @@ interface FolderChildrenTableProps {
  * renders the full design row — icon, formatted size, modified date, and a kebab menu in
  * the design's order (View, Rename, Move, Share, Download, Delete). A file row's name and
  * its menu's "View" both navigate to `routes/file-route.tsx` (`/files/$fileId`), same
- * treatment a folder row's name/"Open" get. Rename/Move/Share/Download/Delete stay
- * intentionally inert (no `onSelect`) — wiring them up is out of scope for this pass, same
- * treatment the folder row's own Share item already gets.
+ * treatment a folder row's name/"Open" get. Rename/Move/Delete each open their own modal
+ * (`renameFileTarget`/`moveFileTarget`/`deleteFileTarget`, same "single shared dialog"
+ * shape as the folder targets above), Download fires `useDownloadFile()` directly — no
+ * modal in the design for it. Share stays inert, same as the folder row's own Share item.
  */
 export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProps) {
   const [renameTarget, setRenameTarget] = useState<Extract<
@@ -67,6 +72,23 @@ export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProp
     FolderChildItem,
     { kind: 'folder' }
   > | null>(null);
+  const [renameFileTarget, setRenameFileTarget] = useState<Extract<
+    FolderChildItem,
+    { kind: 'file' }
+  > | null>(null);
+  // `folderId` isn't on `FileChildItem` (a listing row doesn't carry its own parent) —
+  // `MoveFileDialog` needs it to know the file's current location, so it's filled in from
+  // `parentId` when the target is set, not part of the row's own shape.
+  const [moveFileTarget, setMoveFileTarget] = useState<{
+    id: string;
+    name: string;
+    folderId: string;
+  } | null>(null);
+  const [deleteFileTarget, setDeleteFileTarget] = useState<Extract<
+    FolderChildItem,
+    { kind: 'file' }
+  > | null>(null);
+  const downloadFile = useDownloadFile();
 
   return (
     <div>
@@ -172,11 +194,13 @@ export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProp
                       View
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setRenameFileTarget(item)}>
                     <Pencil aria-hidden="true" />
                     Rename
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => setMoveFileTarget({ id: item.id, name: item.name, folderId: parentId })}
+                  >
                     <Move aria-hidden="true" />
                     Move
                   </DropdownMenuItem>
@@ -184,12 +208,15 @@ export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProp
                     <Share2 aria-hidden="true" />
                     Share
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => downloadFile(item)}>
                     <Download aria-hidden="true" />
                     Download
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive">
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => setDeleteFileTarget(item)}
+                  >
                     <Trash2 aria-hidden="true" />
                     Delete
                   </DropdownMenuItem>
@@ -214,6 +241,30 @@ export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProp
         open={!!deleteTarget}
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
+        }}
+      />
+      <RenameFileDialog
+        file={renameFileTarget}
+        parentId={parentId}
+        open={!!renameFileTarget}
+        onOpenChange={(open) => {
+          if (!open) setRenameFileTarget(null);
+        }}
+      />
+      <MoveFileDialog
+        file={moveFileTarget}
+        parentId={parentId}
+        open={!!moveFileTarget}
+        onOpenChange={(open) => {
+          if (!open) setMoveFileTarget(null);
+        }}
+      />
+      <DeleteFileDialog
+        file={deleteFileTarget}
+        parentId={parentId}
+        open={!!deleteFileTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteFileTarget(null);
         }}
       />
     </div>

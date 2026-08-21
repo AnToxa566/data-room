@@ -150,8 +150,241 @@ describe('FilePage — a READY PDF in the room root', () => {
     await waitFor(() => expect(document.title).toBe('NDA.pdf — Data Red Rooms'));
   });
 
-  it('leaves Download, Share, Rename, Move, and Delete inert', async () => {
+  it('leaves Share inert', async () => {
     stubFileApi();
+    renderRouterAt('/files/file-1', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('file-page');
+    await within(page).findByText('NDA.pdf');
+
+    fireEvent.click(within(page).getByRole('button', { name: 'Share' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('FilePage — downloading a file', () => {
+  it('fetches a signed URL, opens it, and toasts', async () => {
+    const fetchMock = stubFileApi();
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    renderRouterAt('/files/file-1', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('file-page');
+    await within(page).findByText('NDA.pdf');
+    fireEvent.click(within(page).getByRole('button', { name: 'Download' }));
+
+    await waitFor(() =>
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://storage.googleapis.com/bucket/signed-nda.pdf',
+        '_blank',
+      ),
+    );
+    expect(await screen.findByRole('status')).toHaveProperty(
+      'textContent',
+      'Downloading "NDA.pdf"',
+    );
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        (typeof input === 'string' ? input : input.toString()).includes('/download-url'),
+      ),
+    ).toBe(true);
+
+    openSpy.mockRestore();
+  });
+});
+
+describe('FilePage — renaming a file', () => {
+  it('disables Save and shows a loading label while in flight, closes the dialog, and toasts on success', async () => {
+    let resolvePatch!: (response: Response) => void;
+    const pendingPatch = new Promise<Response>((resolve) => {
+      resolvePatch = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        const method = (init?.method ?? 'GET').toUpperCase();
+        if (url.includes('/data-rooms') && method === 'GET') {
+          return jsonResponse({ items: [room], nextCursor: null });
+        }
+        if (url.includes('/files/file-1') && method === 'PATCH') {
+          return pendingPatch;
+        }
+        if (url.includes('/files/file-1') && method === 'GET') {
+          return jsonResponse(file);
+        }
+        if (url.includes('/folders/folder-1') && method === 'GET') {
+          return jsonResponse({
+            ...rootFolder,
+            breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
+            isRoot: true,
+          });
+        }
+        throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+      }),
+    );
+
+    renderRouterAt('/files/file-1', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('file-page');
+    await within(page).findByText('NDA.pdf');
+    fireEvent.pointerDown(within(page).getByRole('button', { name: 'More actions' }), {
+      button: 0,
+    });
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+
+    const nameInput = await screen.findByLabelText('File name');
+    expect(nameInput).toHaveProperty('value', 'NDA.pdf');
+    fireEvent.change(nameInput, { target: { value: 'NDA (final).pdf' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save name' }));
+
+    const savingButton = await screen.findByRole('button', { name: 'Saving…' });
+    expect(savingButton).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveProperty('disabled', true);
+
+    resolvePatch(jsonResponse({ ...file, name: 'NDA (final).pdf' }));
+
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Rename file' })).toBeNull());
+    expect(await screen.findByRole('status')).toHaveProperty(
+      'textContent',
+      'Renamed to "NDA (final).pdf"',
+    );
+  });
+});
+
+describe('FilePage — moving a file', () => {
+  it('opens the picker at the Data Room root, navigates into a subfolder, and moves the file there', async () => {
+    let resolvePatch!: (response: Response) => void;
+    const pendingPatch = new Promise<Response>((resolve) => {
+      resolvePatch = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        const method = (init?.method ?? 'GET').toUpperCase();
+        if (url.includes('/data-rooms') && method === 'GET') {
+          return jsonResponse({ items: [room], nextCursor: null });
+        }
+        if (url.includes('/files/file-1') && method === 'PATCH') {
+          return pendingPatch;
+        }
+        if (url.includes('/files/file-1') && method === 'GET') {
+          return jsonResponse(file);
+        }
+        if (url.includes('/folders/folder-1/children') && method === 'GET') {
+          return jsonResponse({
+            items: [
+              {
+                kind: 'folder',
+                id: subfolder.id,
+                name: subfolder.name,
+                createdAt: subfolder.createdAt,
+                updatedAt: subfolder.updatedAt,
+              },
+            ],
+            nextCursor: null,
+          });
+        }
+        if (url.includes(`/folders/${subfolder.id}/children`) && method === 'GET') {
+          return jsonResponse({ items: [], nextCursor: null });
+        }
+        if (url.includes('/folders/folder-1') && method === 'GET') {
+          return jsonResponse({
+            ...rootFolder,
+            breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
+            isRoot: true,
+          });
+        }
+        if (url.includes(`/folders/${subfolder.id}`) && method === 'GET') {
+          return jsonResponse({
+            ...subfolder,
+            breadcrumbs: [
+              { id: rootFolder.id, name: rootFolder.name },
+              { id: subfolder.id, name: subfolder.name },
+            ],
+            isRoot: false,
+          });
+        }
+        throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+      }),
+    );
+
+    renderRouterAt('/files/file-1', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('file-page');
+    await within(page).findByText('NDA.pdf');
+    fireEvent.pointerDown(within(page).getByRole('button', { name: 'More actions' }), {
+      button: 0,
+    });
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Move' }));
+
+    expect(await screen.findByRole('heading', { name: 'Move file' })).toBeTruthy();
+    // Opens at the Data Room root — moving here is disabled, the file is already there.
+    expect(await screen.findByText('The file is already in this folder.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Move here' })).toHaveProperty('disabled', true);
+
+    fireEvent.click(await screen.findByText('Legal'));
+
+    await waitFor(() =>
+      expect(screen.queryByText('The file is already in this folder.')).toBeNull(),
+    );
+    const moveButton = screen.getByRole('button', { name: 'Move here' });
+    await waitFor(() => expect(moveButton).toHaveProperty('disabled', false));
+    fireEvent.click(moveButton);
+
+    expect(await screen.findByRole('button', { name: 'Moving…' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+
+    resolvePatch(jsonResponse({ ...file, folderId: subfolder.id }));
+
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Move file' })).toBeNull());
+    expect(await screen.findByRole('status')).toHaveProperty('textContent', 'Moved to "Legal"');
+  });
+});
+
+describe('FilePage — deleting a file', () => {
+  it('disables the button and shows a loading label while in flight, closes the dialog, toasts, and returns to the folder', async () => {
+    let resolveDelete!: (response: Response) => void;
+    const pendingDelete = new Promise<Response>((resolve) => {
+      resolveDelete = resolve;
+    });
+    const fetchMock = vi.fn(async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (url.includes('/data-rooms') && method === 'GET') {
+        return jsonResponse({ items: [room], nextCursor: null });
+      }
+      if (url.includes('/files/file-1') && method === 'DELETE') {
+        return pendingDelete;
+      }
+      if (url.includes('/files/file-1') && method === 'GET') {
+        return jsonResponse(file);
+      }
+      if (url.includes('/folders/folder-1/children') && method === 'GET') {
+        return jsonResponse({ items: [], nextCursor: null });
+      }
+      if (url.includes('/folders/folder-1') && method === 'GET') {
+        return jsonResponse({
+          ...rootFolder,
+          breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
+          isRoot: true,
+        });
+      }
+      throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
     const { router } = renderRouterAt('/files/file-1', {
       status: 'authenticated',
       user: mockUser,
@@ -159,19 +392,26 @@ describe('FilePage — a READY PDF in the room root', () => {
 
     const page = await screen.findByTestId('file-page');
     await within(page).findByText('NDA.pdf');
-
-    fireEvent.click(within(page).getByRole('button', { name: 'Download' }));
-    fireEvent.click(within(page).getByRole('button', { name: 'Share' }));
     fireEvent.pointerDown(within(page).getByRole('button', { name: 'More actions' }), {
       button: 0,
     });
-    for (const name of ['Rename', 'Move', 'Delete']) {
-      expect(await screen.findByRole('menuitem', { name })).toBeTruthy();
-    }
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
 
-    expect(router.state.location.pathname).toBe('/files/file-1');
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(await screen.findByRole('heading', { name: 'Delete this file?' })).toBeTruthy();
+    const deleteButton = await screen.findByRole('button', { name: 'Delete file' });
+    fireEvent.click(deleteButton);
+
+    const deletingButton = await screen.findByRole('button', { name: 'Deleting…' });
+    expect(deletingButton).toHaveProperty('disabled', true);
+
+    resolveDelete(new Response(null, { status: 204 }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/folders/folder-1'));
+
+    const deleteCall = fetchMock.mock.calls.find(
+      ([, init]) => (init?.method ?? '').toUpperCase() === 'DELETE',
+    );
+    expect(deleteCall).toBeTruthy();
   });
 });
 

@@ -66,6 +66,7 @@ function FilePage() {
         {file.isSuccess && folder.isSuccess && (
           <>
             <FileViewerHeader
+              fileId={file.data.body.id}
               backLabel={backLabel}
               size={file.data.body.size}
               fileName={file.data.body.name}

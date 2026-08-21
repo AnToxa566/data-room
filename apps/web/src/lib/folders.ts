@@ -21,11 +21,17 @@ export function useFolderQuery(id: string, options?: { enabled?: boolean }) {
 /**
  * First page only (`limit` defaults to 50 server-side) — same "no infinite scroll yet"
  * scope as `useDataRoomsQuery`.
+ *
+ * `options.enabled` exists for `MoveFileDialog`: the folder it's browsing is seeded
+ * asynchronously (from the file's own folder query), so this needs to stay off until an
+ * id is actually known — same "gate on a value that isn't there yet" reasoning as
+ * `useFolderQuery`'s own `enabled`.
  */
-export function useFolderChildrenQuery(id: string) {
+export function useFolderChildrenQuery(id: string, options?: { enabled?: boolean }) {
   return tsr.folders.children.useQuery({
     queryKey: ['folders', id, 'children'],
     queryData: { params: { id } },
+    enabled: options?.enabled,
   });
 }
 
