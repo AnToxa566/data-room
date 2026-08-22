@@ -1,16 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createRoute } from '@tanstack/react-router';
 
 import { AppShell } from '../components/app-shell';
 import { CreateFolderDialog } from '../components/create-folder-dialog';
 import { FolderChildrenTable } from '../components/folder-children-table';
-import { FolderChildrenTableSkeleton } from '../components/folder-children-table-skeleton';
 import { FolderDropZone } from '../components/folder-drop-zone';
 import { FolderEmptyState } from '../components/folder-empty-state';
 import { FolderEmptySubfolderState } from '../components/folder-empty-subfolder-state';
+import { FolderPageSkeleton } from '../components/folder-page-skeleton';
 import { FolderToolbar } from '../components/folder-toolbar';
 import { Header } from '../components/header';
 import { NotFoundState } from '../components/not-found-state';
+import { useActiveNav } from '../lib/active-nav';
 import { isTsRestErrorWithStatus } from '../lib/api';
 import { useDocumentTitle } from '../lib/document-title';
 import { useFolderChildrenQuery, useFolderQuery } from '../lib/folders';
@@ -38,6 +39,7 @@ function FolderPage() {
   // before this component renders any more.
   const folder = useFolderQuery(id);
   const children = useFolderChildrenQuery(id);
+  const activeNav = useActiveNav();
 
   const isOwner = folder.data?.body.isOwner ?? true;
   // `dataRoomName` comes straight off the folder response now (see
@@ -53,6 +55,12 @@ function FolderPage() {
   // above.
   useDocumentTitle(displayName ? `${displayName} — Data Red Rooms` : 'Data Red Rooms');
 
+  // Confirms `activeNav` (read by `AppShell` below, via `lib/active-nav.tsx`) once this
+  // folder's own fetch resolves — an effect, not computed during render, since it writes
+  // to state owned by `ActiveNavProvider` (a different component). This only ever
+  // *refines* `activeNav`, never resets it to empty just because a new folder's fetch
+  // started — which is what used to blink the sidebar's active item off.
+  //
   // Every id in `breadcrumbs` (self included, self last — see `FoldersService.get`) is a
   // candidate match for a `FOLDER`-type "Shared with me" entry, not just `breadcrumbs[0]`.
   // `breadcrumbs[0]` is only the *widest* applicable share's boundary — `resolveShareContext`
@@ -62,9 +70,15 @@ function FolderPage() {
   // me" and still needs to highlight while browsing it. Truncation only ever cuts entries
   // *above* the widest boundary, never below it, so every id from that boundary down to the
   // current folder survives in `breadcrumbs` regardless of which share won. A `DATA_ROOM`-
-  // type share needs no equivalent here: its `resourceId` already is `dataRoomId`, passed
-  // to `AppShell` as `activeDataRoomId` below.
-  const activeSharedItemIds = folder.data?.body.breadcrumbs.map((crumb) => crumb.id);
+  // type share needs no equivalent here: its `resourceId` already is `dataRoomId`.
+  useEffect(() => {
+    if (!folder.data) return;
+    activeNav.setActive({
+      dataRoomId: folder.data.body.dataRoomId,
+      sharedItemIds: folder.data.body.breadcrumbs.map((crumb) => crumb.id),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folder.data]);
 
   const isPending = folder.isPending || children.isPending;
   const isError = folder.isError || children.isError;
@@ -80,7 +94,7 @@ function FolderPage() {
           : 'px-4 pt-4 pb-10 min-[900px]:px-10 min-[900px]:pt-7 min-[900px]:pb-14'
       }
     >
-      {isPending && <FolderChildrenTableSkeleton />}
+      {isPending && <FolderPageSkeleton />}
       {isNotFound && (
         <NotFoundState
           kind="folder"
@@ -157,8 +171,8 @@ function FolderPage() {
   return auth.status === 'authenticated' ? (
     <AppShell
       user={auth.user}
-      activeDataRoomId={folder.data?.body.dataRoomId}
-      activeSharedItemIds={activeSharedItemIds}
+      activeDataRoomId={activeNav.activeDataRoomId}
+      activeSharedItemIds={activeNav.activeSharedItemIds}
       sharedByEmail={isOwner ? undefined : (folder.data?.body.sharedByEmail ?? undefined)}
     >
       {pageBody}

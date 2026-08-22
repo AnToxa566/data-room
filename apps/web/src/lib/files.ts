@@ -5,7 +5,11 @@ import { errorMessage } from './error-message';
 
 /**
  * A file's own metadata — `routes/file-route.tsx` is the only caller today. Same
- * one-hook-per-request shape as `useFolderQuery` in `lib/folders.ts`.
+ * one-hook-per-request shape as `useFolderQuery` in `lib/folders.ts` — see that hook's
+ * doc comment for why this deliberately has no `placeholderData: keepPreviousData`: it
+ * would risk momentarily rendering one file's viewer/permissions under another file's
+ * identity while switching. The sidebar's active-item problem this used to paper over is
+ * solved independently in `lib/active-nav.tsx`.
  */
 export function useFileQuery(id: string) {
   return tsr.files.get.useQuery({

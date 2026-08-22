@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { createRoute } from '@tanstack/react-router';
 
 import { AppShell } from '../components/app-shell';
@@ -6,6 +7,7 @@ import { FileViewerHeader } from '../components/file-viewer-header';
 import { FileViewerSkeleton } from '../components/file-viewer-skeleton';
 import { Header } from '../components/header';
 import { NotFoundState } from '../components/not-found-state';
+import { useActiveNav } from '../lib/active-nav';
 import { isTsRestErrorWithStatus } from '../lib/api';
 import { useDocumentTitle } from '../lib/document-title';
 import { useFileQuery } from '../lib/files';
@@ -25,6 +27,7 @@ function FilePage() {
   const { fileId } = fileRoute.useParams();
   // Called unconditionally — rules of hooks, same reasoning as `folder-route.tsx`.
   const file = useFileQuery(fileId);
+  const activeNav = useActiveNav();
 
   const isOwner = file.data?.body.isOwner ?? true;
   const sharedRootType = file.data?.body.sharedRootType ?? null;
@@ -38,20 +41,32 @@ function FilePage() {
   const folderId = needsFolderFetch ? file.data?.body.folderId : undefined;
   const folder = useFolderQuery(folderId ?? '', { enabled: !!folderId });
 
+  // Confirms `activeNav` (read by `AppShell` below, via `lib/active-nav.tsx`) once this
+  // file's own fetch resolves — an effect, same reasoning as `folder-route.tsx`'s
+  // identical one: this only ever *refines* `activeNav`, never resets it to empty just
+  // because a new file's fetch started. Re-fires once `folder.data` also resolves (a
+  // separate, later query), refining `sharedItemIds` further at that point.
+  //
   // A FILE-type "Shared with me" entry matches this file's own id — always, regardless
   // of `sharedRootType`. `sharedRootType` reflects whichever share is *widest* (for the
   // read-only badge/back-button), which can be `'FOLDER'`/`'DATA_ROOM'` even when a
   // narrower direct FILE-level grant *also* exists on this exact file — see
-  // `folder-route.tsx`'s identical reasoning for `activeSharedItemIds`. A FOLDER-type
-  // entry matches any id in the containing folder's `breadcrumbs` (fetched whenever
-  // `needsFolderFetch`, i.e. whenever there's a folder to even check) — same "truncation
-  // never cuts below the winning boundary" argument as `folder-route.tsx`. A
-  // `DATA_ROOM`-type share needs no equivalent: its `resourceId` already is
-  // `dataRoomId`, passed to `AppShell` as `activeDataRoomId` below.
-  const activeSharedItemIds = [
-    ...(file.data?.body.id ? [file.data.body.id] : []),
-    ...(folder.data?.body.breadcrumbs.map((crumb) => crumb.id) ?? []),
-  ];
+  // `folder-route.tsx`'s identical reasoning for its own breadcrumb-derived ids. A
+  // FOLDER-type entry matches any id in the containing folder's `breadcrumbs` (fetched
+  // whenever `needsFolderFetch`, i.e. whenever there's a folder to even check) — same
+  // "truncation never cuts below the winning boundary" argument as `folder-route.tsx`. A
+  // `DATA_ROOM`-type share needs no equivalent: its `resourceId` already is `dataRoomId`.
+  useEffect(() => {
+    if (!file.data) return;
+    activeNav.setActive({
+      dataRoomId: file.data.body.dataRoomId,
+      sharedItemIds: [
+        file.data.body.id,
+        ...(folder.data?.body.breadcrumbs.map((crumb) => crumb.id) ?? []),
+      ],
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file.data, folder.data]);
 
   const roomName =
     folder.data && folder.data.body.isRoot ? folder.data.body.dataRoomName : (folder.data?.body.name ?? '');
@@ -120,8 +135,8 @@ function FilePage() {
   return auth.status === 'authenticated' ? (
     <AppShell
       user={auth.user}
-      activeDataRoomId={file.data?.body.dataRoomId}
-      activeSharedItemIds={activeSharedItemIds}
+      activeDataRoomId={activeNav.activeDataRoomId}
+      activeSharedItemIds={activeNav.activeSharedItemIds}
       sharedByEmail={isOwner ? undefined : (file.data?.body.sharedByEmail ?? undefined)}
     >
       {pageBody}

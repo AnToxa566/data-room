@@ -24,9 +24,12 @@ interface AppSidebarProps {
  */
 export function AppSidebar({ user, activeDataRoomId, activeSharedItemIds }: AppSidebarProps) {
   const signOut = useSignOut();
-  // No loading/error treatment here beyond falling back to `NavSection`'s `emptyText` —
-  // the Home route (routes/home-route.tsx) owns the real loading/error UI for this same
-  // query; react-query dedupes the two `useDataRoomsQuery()` calls into one request.
+  // No *error* treatment here beyond falling back to `NavSection`'s `emptyText` — the
+  // Home route (routes/home-route.tsx) owns the real error UI for this same query;
+  // react-query dedupes the two `useDataRoomsQuery()` calls into one request. The first
+  // load's *pending* state does get its own treatment (`isPending` below, passed to
+  // `NavSection` as `isLoading`) — without it this section rendered as "None yet" for a
+  // moment on every fresh sign-in/page load, indistinguishable from a real empty list.
   const dataRooms = useDataRoomsQuery();
   // Only rooms this user owns — a room shared with them (`access !== 'OWNER'`) now
   // surfaces under "Shared with me" instead (via `useSharedWithMeQuery`), not here too.
@@ -76,12 +79,14 @@ export function AppSidebar({ user, activeDataRoomId, activeSharedItemIds }: AppS
           title="Your Data Rooms"
           emptyText="None yet"
           items={myRooms}
+          isLoading={dataRooms.isPending}
           activeDataRoomId={activeDataRoomId}
         />
         <NavSection
           title="Shared with me"
           emptyText="Nothing shared with you"
           items={sharedItems}
+          isLoading={sharedWithMe.isPending}
           activeDataRoomId={activeDataRoomId}
           activeSharedItemIds={activeSharedItemIds}
         />

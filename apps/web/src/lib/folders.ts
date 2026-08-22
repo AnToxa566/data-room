@@ -9,6 +9,15 @@ import { queryClient, tsr } from './api';
  * `breadcrumbs`/`isRoot`/`name` for the back-button label, but doesn't know the folder id
  * until its own file query resolves — same "gate on a value from an earlier query"
  * reasoning as `useFolderStatsQuery` below.
+ *
+ * Deliberately no `placeholderData: keepPreviousData` here — a previous version of this
+ * hook had it, to stop `folder-route.tsx`'s sidebar props from flashing to `undefined`
+ * mid-navigation. That also froze `isPending`/`isSuccess` across a folder change, so the
+ * page briefly rendered the *previous* folder's owner-gated buttons/breadcrumbs under the
+ * new folder's identity — a correctness risk this app can't accept (see `AGENTS.md`'s
+ * authorization-check rule). The sidebar problem is now solved independently, in
+ * `lib/active-nav.tsx`, which is fed by *confirmed* query results only and never needs
+ * this hook to lie about being done early.
  */
 export function useFolderQuery(id: string, options?: { enabled?: boolean }) {
   return tsr.folders.get.useQuery({

@@ -119,7 +119,6 @@ export function FolderToolbar({
           <h1 className="text-[30px] font-extrabold tracking-tight text-foreground">
             {displayName}
           </h1>
-          <div className="mt-0.5 text-xs text-muted-foreground">0 files · 0 folders · 0 B total</div>
         </div>
         {isOwner ? (
           <div className="flex flex-wrap gap-2">

@@ -3,6 +3,7 @@ import { Outlet, createRootRouteWithContext } from '@tanstack/react-router';
 import { ToastProvider } from '@dataroom/ui';
 
 import { UploadTray } from '../components/upload-tray';
+import { ActiveNavProvider } from '../lib/active-nav';
 import type { SettledAuthState } from '../lib/auth';
 import { UploadProvider } from '../lib/upload-manager';
 
@@ -26,17 +27,21 @@ export const rootRoute = createRootRouteWithContext<RouterContext>()({
  * `UploadProvider`/`UploadTray` live here, not inside `folder-route.tsx` — an upload
  * started in one folder needs to survive navigating to another (or to `/home`), same as
  * the design keeps its tray fixed regardless of which view is showing. See
- * `lib/upload-manager.tsx`.
+ * `lib/upload-manager.tsx`. `ActiveNavProvider` lives here for the identical reason,
+ * one layer up from `UploadProvider` only because nothing here depends on ordering
+ * between the two — see `lib/active-nav.tsx`.
  */
 function RootLayout() {
   return (
     <ToastProvider>
-      <UploadProvider>
-        <div className="flex min-h-dvh flex-col bg-background text-foreground">
-          <Outlet />
-        </div>
-        <UploadTray />
-      </UploadProvider>
+      <ActiveNavProvider>
+        <UploadProvider>
+          <div className="flex min-h-dvh flex-col bg-background text-foreground">
+            <Outlet />
+          </div>
+          <UploadTray />
+        </UploadProvider>
+      </ActiveNavProvider>
     </ToastProvider>
   );
 }

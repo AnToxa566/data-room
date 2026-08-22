@@ -1,7 +1,14 @@
 import { Link } from '@tanstack/react-router';
 import { Archive, FileText, Folder as FolderIcon } from 'lucide-react';
 
+import { Skeleton } from '@dataroom/ui';
 import { cn } from '@dataroom/ui/lib/utils';
+
+import { useActiveNav } from '../lib/active-nav';
+
+// Three rows, varied widths so it doesn't read as a grid of identical bars — same idiom
+// as `FolderChildrenTableSkeleton`'s `ROW_WIDTHS`, just a shorter list for a sidebar.
+const SKELETON_ROW_WIDTHS = ['w-28', 'w-20', 'w-24'] as const;
 
 export interface NavItem {
   id: string;
@@ -25,6 +32,12 @@ interface NavSectionProps {
   /** Shown when `items` is empty or not yet wired up to a data source. */
   emptyText: string;
   items?: NavItem[];
+  /** True while the query `items` comes from is still on its first fetch — shows a row
+   * skeleton instead of `emptyText`. Without this, a section briefly renders as if it
+   * were genuinely empty (`items` defaults to `[]` until the query resolves) before
+   * populating, same "don't let a transient unknown render as a confirmed value" issue
+   * `lib/active-nav.tsx` fixes for the active-item highlight. */
+  isLoading?: boolean;
   /** The Data Room currently being browsed, if any — see `activeDataRoomId` on
    * `AppShell`/`AppSidebar`. Compared against each item's `id`, not the route's folder id,
    * so a room stays highlighted while browsing any of its subfolders, not just its root. */
@@ -57,20 +70,49 @@ const itemClassName =
  * `resourceId` already is the Data Room id, so it matches `activeDataRoomId` for free; a
  * `FOLDER`/`FILE`-type share's `resourceId` is a folder/file id instead, which is what
  * `activeSharedItemIds` (computed by the folder/file route) matches against.
+ *
+ * Each item's `onClick` writes to `lib/active-nav.tsx` *optimistically*, the instant it's
+ * clicked — before navigation, let alone the destination's own fetch, resolves. The id to
+ * highlight is already known here (it's `item.id`, the very thing this click targets), so
+ * there's no reason to wait on a round trip just to light it up; the destination route's
+ * own effect (see `folder-route.tsx`/`file-route.tsx`) then confirms/refines it once its
+ * data actually loads.
  */
 export function NavSection({
   title,
   emptyText,
   items = [],
+  isLoading,
   activeDataRoomId,
   activeSharedItemIds,
 }: NavSectionProps) {
+  const { setActive } = useActiveNav();
+
+  function handleClick(item: NavItem) {
+    const kind = item.kind ?? 'room';
+    setActive(
+      kind === 'room'
+        ? { dataRoomId: item.id, sharedItemIds: [] }
+        : { dataRoomId: undefined, sharedItemIds: [item.id] },
+    );
+  }
+
   return (
     <div>
       <div className="px-2 pb-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
         {title}
       </div>
-      {items.length === 0 ? (
+      {isLoading ? (
+        <ul className="flex flex-col gap-0.5" aria-busy="true" aria-label={`Loading ${title}`}>
+          {SKELETON_ROW_WIDTHS.map((width, index) => (
+            <li key={index} className={itemClassName}>
+              <span aria-hidden="true" className="w-0.75 shrink-0 self-stretch bg-transparent" />
+              <Skeleton className="size-4 shrink-0" />
+              <Skeleton className={cn('h-2.25', width)} />
+            </li>
+          ))}
+        </ul>
+      ) : items.length === 0 ? (
         <div className="px-2 text-[13px] text-muted-foreground">{emptyText}</div>
       ) : (
         <ul className="flex flex-col gap-0.5">
@@ -100,6 +142,7 @@ export function NavSection({
                   params={{ fileId: item.fileId }}
                   className={className}
                   aria-current={isActive ? 'page' : undefined}
+                  onClick={() => handleClick(item)}
                 >
                   {mark}
                   {icon}
@@ -113,6 +156,7 @@ export function NavSection({
                   params={{ id: item.rootFolderId }}
                   className={className}
                   aria-current={isActive ? 'page' : undefined}
+                  onClick={() => handleClick(item)}
                 >
                   {mark}
                   {icon}

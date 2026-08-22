@@ -1447,3 +1447,232 @@ describe('FolderPage — recipient views (non-owner)', () => {
     });
   });
 });
+
+describe('FolderPage — sidebar active-nav, no blink (lib/active-nav.tsx)', () => {
+  it('marks a newly clicked Data Room active in the sidebar immediately — before its own folder fetch resolves', async () => {
+    let releaseFolder2!: () => void;
+    const folder2Gate = new Promise<void>((resolve) => {
+      releaseFolder2 = resolve;
+    });
+
+    const fetchMock = vi.fn(async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const method = (init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/data-rooms') && method === 'GET') {
+        return jsonResponse({ items: [room, otherRoom], nextCursor: null });
+      }
+      if (url.includes('/shares') && method === 'GET') {
+        return jsonResponse({ items: [], nextCursor: null });
+      }
+      if (url.includes('/folders/folder-1/children') && method === 'GET') {
+        return jsonResponse({ items: [], nextCursor: null });
+      }
+      if (url.includes('/folders/folder-1') && method === 'GET') {
+        return jsonResponse({
+          ...rootFolder,
+          breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
+          isRoot: true,
+          ...OWNER_FOLDER_FIELDS,
+        });
+      }
+      // `folder-2` (Project Anchorage's root) never resolves until the test releases it —
+      // this is what proves the sidebar highlight isn't waiting on this fetch.
+      if (url.includes('/folders/folder-2/children') && method === 'GET') {
+        await folder2Gate;
+        return jsonResponse({ items: [], nextCursor: null });
+      }
+      if (url.includes('/folders/folder-2') && method === 'GET') {
+        await folder2Gate;
+        return jsonResponse({
+          id: 'folder-2',
+          name: 'root',
+          dataRoomId: otherRoom.id,
+          parentId: null,
+          path: '/folder-2/',
+          depth: 0,
+          createdAt: '2026-01-06T00:00:00.000Z',
+          updatedAt: '2026-01-06T00:00:00.000Z',
+          breadcrumbs: [{ id: 'folder-2', name: 'root' }],
+          isRoot: true,
+          dataRoomName: otherRoom.name,
+          isOwner: true,
+          sharedByEmail: null,
+          sharedRootType: null,
+        });
+      }
+      throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { router } = renderRouterAt('/folders/folder-1', {
+      status: 'authenticated',
+      user: mockUser,
+    });
+
+    const nav = await screen.findByRole('navigation', { name: 'Your Data Rooms' });
+    await within(nav).findByRole('link', { name: /Project Halyard/ });
+    expect(within(nav).getByRole('link', { name: /Project Halyard/ })).toHaveProperty(
+      'ariaCurrent',
+      'page',
+    );
+
+    fireEvent.click(within(nav).getByRole('link', { name: /Project Anchorage/ }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/folders/folder-2'));
+
+    // The room-2 fetch is still gated (unresolved) at this point — the highlight below
+    // can only be coming from the optimistic `onClick` in `nav-section.tsx`, not from any
+    // confirmed query result.
+    expect(within(nav).getByRole('link', { name: /Project Anchorage/ })).toHaveProperty(
+      'ariaCurrent',
+      'page',
+    );
+    expect(
+      within(nav).getByRole('link', { name: /Project Halyard/ }).getAttribute('aria-current'),
+    ).toBeNull();
+
+    releaseFolder2();
+    await screen.findByTestId('folder-page');
+  });
+
+  it("keeps the owning room active while navigating into one of its files, even before the file's own fetch resolves", async () => {
+    let releaseFile!: () => void;
+    const fileGate = new Promise<void>((resolve) => {
+      releaseFile = resolve;
+    });
+
+    const fetchMock = vi.fn(async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const method = (init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/data-rooms') && method === 'GET') {
+        return jsonResponse({ items: [room, otherRoom], nextCursor: null });
+      }
+      if (url.includes('/shares') && method === 'GET') {
+        return jsonResponse({ items: [], nextCursor: null });
+      }
+      if (url.includes('/folders/folder-1/children') && method === 'GET') {
+        return jsonResponse({
+          items: [
+            {
+              kind: 'file',
+              id: 'file-1',
+              name: 'NDA.pdf',
+              size: '2048',
+              mimeType: 'application/pdf',
+              createdAt: '2026-01-06T00:00:00.000Z',
+              updatedAt: '2026-01-06T00:00:00.000Z',
+            },
+          ],
+          nextCursor: null,
+        });
+      }
+      if (url.includes('/folders/folder-1') && method === 'GET') {
+        return jsonResponse({
+          ...rootFolder,
+          breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
+          isRoot: true,
+          ...OWNER_FOLDER_FIELDS,
+        });
+      }
+      // The file's own fetch never resolves until the test releases it — proving the
+      // room's sidebar highlight survives `FolderPage` unmounting/`FilePage` mounting
+      // without waiting on this.
+      if (/\/files\/file-1$/.test(url) && method === 'GET') {
+        await fileGate;
+        return jsonResponse({
+          id: 'file-1',
+          name: 'NDA.pdf',
+          folderId: rootFolder.id,
+          dataRoomId: room.id,
+          size: '2048',
+          mimeType: 'application/pdf',
+          status: 'READY',
+          createdAt: '2026-01-06T00:00:00.000Z',
+          updatedAt: '2026-01-06T00:00:00.000Z',
+          isOwner: true,
+          sharedByEmail: null,
+          sharedRootType: null,
+        });
+      }
+      throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { router } = renderRouterAt('/folders/folder-1', {
+      status: 'authenticated',
+      user: mockUser,
+    });
+
+    const page = await screen.findByTestId('folder-page');
+    fireEvent.click(await within(page).findByText('NDA.pdf'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/files/file-1'));
+
+    // Re-query the sidebar fresh — the folder → file transition remounts `AppShell`, so
+    // the `nav` element from before navigation is a different (now-detached) node.
+    const nav = await screen.findByRole('navigation', { name: 'Your Data Rooms' });
+    expect(await within(nav).findByRole('link', { name: /Project Halyard/ })).toHaveProperty(
+      'ariaCurrent',
+      'page',
+    );
+
+    releaseFile();
+    await screen.findByTestId('file-page');
+  });
+});
+
+describe('AppSidebar — "Your Data Rooms" loading state', () => {
+  it('shows a row skeleton while the rooms list is still loading, not "None yet"', async () => {
+    let releaseDataRooms!: () => void;
+    const dataRoomsGate = new Promise<void>((resolve) => {
+      releaseDataRooms = resolve;
+    });
+
+    const fetchMock = vi.fn(async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const method = (init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/data-rooms') && method === 'GET') {
+        await dataRoomsGate;
+        return jsonResponse({ items: [room, otherRoom], nextCursor: null });
+      }
+      if (url.includes('/shares') && method === 'GET') {
+        return jsonResponse({ items: [], nextCursor: null });
+      }
+      if (url.includes('/folders/folder-1/children') && method === 'GET') {
+        return jsonResponse({ items: [], nextCursor: null });
+      }
+      if (url.includes('/folders/folder-1') && method === 'GET') {
+        return jsonResponse({
+          ...rootFolder,
+          breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
+          isRoot: true,
+          ...OWNER_FOLDER_FIELDS,
+        });
+      }
+      throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderRouterAt('/folders/folder-1', { status: 'authenticated', user: mockUser });
+
+    const nav = await screen.findByRole('navigation', { name: 'Your Data Rooms' });
+    // Gated: the rooms list hasn't resolved yet, so this must be the loading skeleton,
+    // not the empty-state copy — which would wrongly claim there are no rooms at all.
+    expect(within(nav).getByRole('list', { name: 'Loading Your Data Rooms' })).toBeTruthy();
+    expect(within(nav).queryByText('None yet')).toBeNull();
+
+    releaseDataRooms();
+    await within(nav).findByRole('link', { name: /Project Halyard/ });
+    expect(within(nav).queryByRole('list', { name: 'Loading Your Data Rooms' })).toBeNull();
+  });
+});
