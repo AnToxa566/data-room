@@ -116,6 +116,12 @@ function stubFolderApi({
     if (statsMatch && method === 'GET') {
       return jsonResponse(stats ?? { totalSize: '0', fileCount: 0, folderCount: 0 });
     }
+    // `ShareDialog` (opened from `FolderToolbar`'s or a row's "Share" action) always
+    // queries the resource's current shares — no test here exercises granting/revoking,
+    // so this is just enough to let the dialog render without an "unhandled fetch" throw.
+    if (url.includes('/shares') && method === 'GET') {
+      return jsonResponse({ items: [], nextCursor: null });
+    }
     const singleFolderMatch = /\/folders\/([\w-]+)$/.exec(url);
     if (singleFolderMatch && method === 'PATCH') {
       const body = JSON.parse((init?.body as string | undefined) ?? '{}') as { name: string };
@@ -165,7 +171,7 @@ afterEach(() => {
 });
 
 describe('FolderPage — root, empty', () => {
-  it('shows the empty-state copy, with Upload/Share left inert', async () => {
+  it('shows the empty-state copy, with Upload left inert and Share opening ShareDialog', async () => {
     stubFolderApi();
     const { router } = renderRouterAt('/folders/folder-1', {
       status: 'authenticated',
@@ -179,15 +185,21 @@ describe('FolderPage — root, empty', () => {
     const uploadButtons = within(page).getAllByRole('button', {
       name: /^Upload( PDFs)?$/,
     });
-    const shareButton = within(page).getByRole('button', { name: 'Share' });
-
-    for (const button of [...uploadButtons, shareButton]) {
+    for (const button of uploadButtons) {
       fireEvent.click(button);
     }
 
-    // Still on the same page, no dialog opened — the actions are genuinely inert.
+    // Still on the same page, no dialog opened — Upload triggers the native file picker,
+    // not a modal (see `upload-button.tsx`), so it's genuinely inert here.
     expect(router.state.location.pathname).toBe('/folders/folder-1');
     expect(screen.queryByRole('dialog')).toBeNull();
+
+    // The root folder is the Data Room itself — Share targets the room, not the folder
+    // (see `folder-toolbar.tsx`'s `isRoot` handling).
+    fireEvent.click(within(page).getByRole('button', { name: 'Share' }));
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    expect(screen.getByText('Share Data Room')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Project Halyard' })).toBeTruthy();
   });
 
   it('sets the document title to the room name (root folder) once loaded', async () => {
@@ -376,9 +388,9 @@ describe('FolderPage — root, populated', () => {
     });
   }
 
-  it('lists all four row menu items, with Share left inert', async () => {
+  it('lists all four row menu items, and Share opens ShareDialog for that row', async () => {
     stubFolderApi({ children: folderChildren });
-    const { router } = renderRouterAt('/folders/folder-1', {
+    renderRouterAt('/folders/folder-1', {
       status: 'authenticated',
       user: mockUser,
     });
@@ -394,8 +406,9 @@ describe('FolderPage — root, populated', () => {
     expect(screen.queryByRole('menuitem', { name: 'Download' })).toBeNull();
 
     fireEvent.click(screen.getByRole('menuitem', { name: 'Share' }));
-    expect(router.state.location.pathname).toBe('/folders/folder-1');
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    expect(screen.getByText('Share folder')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '02 Financials' })).toBeTruthy();
   });
 
   it('navigates into the folder when "Open" is chosen from its row menu', async () => {

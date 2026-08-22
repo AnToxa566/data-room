@@ -106,6 +106,12 @@ function stubFileApi({
         isRoot: folder.parentId === null,
       });
     }
+    // `ShareDialog` (opened from `FileViewerHeader`'s "Share" button) always queries the
+    // file's current shares — no test here exercises granting/revoking, so this is just
+    // enough to let the dialog render without an "unhandled fetch" throw.
+    if (url.includes('/shares')) {
+      return jsonResponse({ items: [], nextCursor: null });
+    }
     throw new Error(`Unhandled fetch in test: ${url}`);
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -150,7 +156,7 @@ describe('FilePage — a READY PDF in the room root', () => {
     await waitFor(() => expect(document.title).toBe('NDA.pdf — Data Red Rooms'));
   });
 
-  it('leaves Share inert', async () => {
+  it('opens ShareDialog for the file', async () => {
     stubFileApi();
     renderRouterAt('/files/file-1', { status: 'authenticated', user: mockUser });
 
@@ -158,7 +164,9 @@ describe('FilePage — a READY PDF in the room root', () => {
     await within(page).findByText('NDA.pdf');
 
     fireEvent.click(within(page).getByRole('button', { name: 'Share' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    expect(screen.getByText('Share file')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'NDA.pdf' })).toBeTruthy();
   });
 });
 

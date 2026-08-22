@@ -17,6 +17,8 @@ import { useDownloadFile } from '../lib/files';
 import { DeleteFileDialog } from './delete-file-dialog';
 import { MoveFileDialog } from './move-file-dialog';
 import { RenameFileDialog } from './rename-file-dialog';
+import { RevokeShareDialog, type RevokeShareTarget } from './revoke-share-dialog';
+import { ShareDialog, type ShareTarget } from './share-dialog';
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' });
 
@@ -41,7 +43,8 @@ interface FileViewerHeaderProps {
  * Download/Share/kebab actions. Rename/Move/Delete each open their own modal — same three
  * dialogs `FolderChildrenTable` uses, just with one file instead of a per-row target — and
  * Download fires `useDownloadFile()` directly, same as the table's own Download item.
- * Share stays inert, same as everywhere else in the app.
+ * "Share" opens `ShareDialog` targeting this file — the one place among the five triggers
+ * that doesn't need an `isRoot` branch, since a file is never a Data Room's root.
  */
 export function FileViewerHeader({
   fileId,
@@ -54,8 +57,20 @@ export function FileViewerHeader({
   const [renameOpen, setRenameOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<RevokeShareTarget | null>(null);
   const downloadFile = useDownloadFile();
   const navigate = useNavigate();
+
+  function handleShare() {
+    setShareTarget({
+      resourceType: 'FILE',
+      resourceId: fileId,
+      title: fileName,
+      url: `${window.location.origin}/files/${fileId}`,
+      fileSize: size,
+    });
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-3 border-b-2 border-border bg-background px-4 py-2.5">
@@ -85,7 +100,7 @@ export function FileViewerHeader({
         >
           <Download className="size-4" aria-hidden="true" />
         </Button>
-        <Button type="button" variant="default">
+        <Button type="button" variant="default" onClick={handleShare}>
           <Share2 className="size-4" aria-hidden="true" />
           Share
         </Button>
@@ -131,6 +146,21 @@ export function FileViewerHeader({
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         onDeleted={() => void navigate({ to: '/folders/$id', params: { id: folderId } })}
+      />
+      <ShareDialog
+        target={shareTarget}
+        open={!!shareTarget}
+        onOpenChange={(open) => {
+          if (!open) setShareTarget(null);
+        }}
+        onRequestRevoke={setRevokeTarget}
+      />
+      <RevokeShareDialog
+        target={revokeTarget}
+        open={!!revokeTarget}
+        onOpenChange={(open) => {
+          if (!open) setRevokeTarget(null);
+        }}
       />
     </div>
   );

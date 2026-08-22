@@ -73,6 +73,12 @@ function stubDataRoomsApi(initialRooms: DataRoomListItem[] = []) {
       rooms.splice(index, 1);
       return jsonResponse({ success: true });
     }
+    // `ShareDialog` (opened from a row's "Share" action) always queries the room's
+    // current shares — no test here exercises granting/revoking, so this is just enough
+    // to let the dialog render without an "unhandled fetch" throw.
+    if (url.includes('/shares') && method === 'GET') {
+      return jsonResponse({ items: [], nextCursor: null });
+    }
 
     throw new Error(`Unhandled fetch in test: ${method} ${url}`);
   });
@@ -256,7 +262,7 @@ describe('HomePage — populated state', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/folders/folder-2'));
   });
 
-  it('lists owned rooms in the sidebar nav and the "Owned by you" table, with Share still inert', async () => {
+  it('lists owned rooms in the sidebar nav and the "Owned by you" table, with Rename/Share/Delete wired', async () => {
     stubDataRoomsApi(rooms);
     const { router } = renderRouterAt('/home', {
       status: 'authenticated',
@@ -281,12 +287,26 @@ describe('HomePage — populated state', () => {
       { button: 0 },
     );
     expect(await screen.findByRole('menuitem', { name: 'Rename' })).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: 'Share' })).toBeTruthy();
-    const deleteItem = screen.getByRole('menuitem', { name: 'Delete' });
+    const shareItem = screen.getByRole('menuitem', { name: 'Share' });
+
+    // Share opens `ShareDialog`, targeting the Data Room (`rooms[0].access` is `'OWNER'`
+    // — see the Share item's own gating in `home-data-rooms-table.tsx`).
+    fireEvent.click(shareItem);
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    expect(screen.getByText('Share Data Room')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Project Halyard' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    fireEvent.pointerDown(
+      screen.getByRole('button', { name: 'More actions for Project Halyard' }),
+      { button: 0 },
+    );
+    const deleteItem = await screen.findByRole('menuitem', { name: 'Delete' });
     fireEvent.click(deleteItem);
 
     // Delete opens its confirm dialog (see the "deleting a Data Room" describe block
-    // below for the full flow) — Share alone stays a no-op.
+    // below for the full flow).
     expect(await screen.findByRole('heading', { name: /Delete the Data Room/ })).toBeTruthy();
     expect(router.state.location.pathname).toBe('/home');
   });

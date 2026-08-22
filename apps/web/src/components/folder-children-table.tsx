@@ -31,6 +31,8 @@ import { DeleteFolderDialog } from './delete-folder-dialog';
 import { MoveFileDialog } from './move-file-dialog';
 import { RenameFileDialog } from './rename-file-dialog';
 import { RenameFolderDialog } from './rename-folder-dialog';
+import { RevokeShareDialog, type RevokeShareTarget } from './revoke-share-dialog';
+import { ShareDialog, type ShareTarget } from './share-dialog';
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' });
 
@@ -47,21 +49,23 @@ interface FolderChildrenTableProps {
  * Hand-rolled CSS-grid "table", same shape as `HomeDataRoomsTable` — there's no
  * `@tanstack/react-table` (or any table library) anywhere in this repo.
  *
- * A folder row's name navigates into it via `Link`. Open/Rename/Delete in the kebab menu
- * are wired to the same navigation and to their own modals below (one controlled instance
- * each, parameterized by `renameTarget`/`deleteTarget` — same "single shared dialog" shape
- * as `HomeDataRoomsTable`). Share remains inert — still out of scope, matching the Data
- * Room table's own Share item. The design gates Move/Download to file rows only
- * (`sc-if row.isFile`), so folder rows never show them.
+ * A folder row's name navigates into it via `Link`. Open/Rename/Delete/Share in the kebab
+ * menu are wired to the same navigation and to their own modals below (one controlled
+ * instance each, parameterized by `renameTarget`/`deleteTarget`/`shareTarget` — same
+ * "single shared dialog" shape as `HomeDataRoomsTable`). The design gates Move/Download to
+ * file rows only (`sc-if row.isFile`), so folder rows never show them.
  *
  * `kind: 'file'` rows: uploads now populate them (see `lib/upload-manager.tsx`), so this
  * renders the full design row — icon, formatted size, modified date, and a kebab menu in
  * the design's order (View, Rename, Move, Share, Download, Delete). A file row's name and
  * its menu's "View" both navigate to `routes/file-route.tsx` (`/files/$fileId`), same
- * treatment a folder row's name/"Open" get. Rename/Move/Delete each open their own modal
- * (`renameFileTarget`/`moveFileTarget`/`deleteFileTarget`, same "single shared dialog"
- * shape as the folder targets above), Download fires `useDownloadFile()` directly — no
- * modal in the design for it. Share stays inert, same as the folder row's own Share item.
+ * treatment a folder row's name/"Open" get. Rename/Move/Delete/Share each open their own
+ * modal (`renameFileTarget`/`moveFileTarget`/`deleteFileTarget`/`shareTarget`, same
+ * "single shared dialog" shape as the folder targets above), Download fires
+ * `useDownloadFile()` directly — no modal in the design for it. Both rows' Share items
+ * share one `shareTarget`/`revokeTarget` pair (a folder or a file, distinguished by
+ * `ShareTarget.resourceType`) rather than one state per kind, since only one Share dialog
+ * can ever be open at a time regardless of which row opened it.
  */
 export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProps) {
   const [renameTarget, setRenameTarget] = useState<Extract<
@@ -88,6 +92,8 @@ export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProp
     FolderChildItem,
     { kind: 'file' }
   > | null>(null);
+  const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<RevokeShareTarget | null>(null);
   const downloadFile = useDownloadFile();
 
   return (
@@ -143,7 +149,17 @@ export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProp
                     <Pencil aria-hidden="true" />
                     Rename
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      setShareTarget({
+                        resourceType: 'FOLDER',
+                        resourceId: item.id,
+                        title: item.name,
+                        url: `${window.location.origin}/folders/${item.id}`,
+                        statsFolderId: item.id,
+                      })
+                    }
+                  >
                     <Share2 aria-hidden="true" />
                     Share
                   </DropdownMenuItem>
@@ -204,7 +220,17 @@ export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProp
                     <Move aria-hidden="true" />
                     Move
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      setShareTarget({
+                        resourceType: 'FILE',
+                        resourceId: item.id,
+                        title: item.name,
+                        url: `${window.location.origin}/files/${item.id}`,
+                        fileSize: item.size,
+                      })
+                    }
+                  >
                     <Share2 aria-hidden="true" />
                     Share
                   </DropdownMenuItem>
@@ -265,6 +291,21 @@ export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProp
         open={!!deleteFileTarget}
         onOpenChange={(open) => {
           if (!open) setDeleteFileTarget(null);
+        }}
+      />
+      <ShareDialog
+        target={shareTarget}
+        open={!!shareTarget}
+        onOpenChange={(open) => {
+          if (!open) setShareTarget(null);
+        }}
+        onRequestRevoke={setRevokeTarget}
+      />
+      <RevokeShareDialog
+        target={revokeTarget}
+        open={!!revokeTarget}
+        onOpenChange={(open) => {
+          if (!open) setRevokeTarget(null);
         }}
       />
     </div>

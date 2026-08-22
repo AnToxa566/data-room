@@ -14,6 +14,8 @@ import {
 
 import { DeleteDataRoomDialog } from './delete-data-room-dialog';
 import { RenameDataRoomDialog } from './rename-data-room-dialog';
+import { RevokeShareDialog, type RevokeShareTarget } from './revoke-share-dialog';
+import { ShareDialog, type ShareTarget } from './share-dialog';
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' });
 
@@ -28,12 +30,18 @@ interface HomeDataRoomsTableProps {
  * root folder (see `folder-route.tsx`) — the rest of the row stays inert. Rename and
  * Delete are wired to their own modals below (one controlled instance each, parameterized
  * by `renameTarget`/`deleteTarget` — same "single shared dialog" shape as
- * `CreateDataRoomDialog`, just keyed to whichever row's quick action was used). Share
- * remains inert — still out of scope.
+ * `CreateDataRoomDialog`, just keyed to whichever row's quick action was used). Share is
+ * wired the same way, but only rendered for rows this user owns: `GET /api/data-rooms`
+ * mixes in rooms shared with the caller (`access: 'VIEWER'|'EDITOR'`) under this same
+ * "Owned by you" heading — a pre-existing mismatch out of scope to fix here — and
+ * share-management requires ownership server-side (404 otherwise), so there's no point
+ * offering it on a row it can't work on.
  */
 export function HomeDataRoomsTable({ rooms }: HomeDataRoomsTableProps) {
   const [renameTarget, setRenameTarget] = useState<DataRoomListItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DataRoomListItem | null>(null);
+  const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<RevokeShareTarget | null>(null);
 
   return (
     <section className="pt-7" aria-labelledby="owned-by-you-heading">
@@ -48,7 +56,9 @@ export function HomeDataRoomsTable({ rooms }: HomeDataRoomsTableProps) {
         <div className="hidden min-[900px]:block">Created</div>
         <div />
       </div>
-      {rooms.map((room) => (
+      {rooms.map((room) => {
+        const rootFolderId = room.rootFolderId;
+        return (
         <div
           key={room.id}
           className="grid grid-cols-[minmax(0,1fr)_44px] px-2 items-center border-b border-border min-h-11.5 hover:bg-foreground/4 min-[900px]:grid-cols-[minmax(0,1fr)_140px_44px]"
@@ -99,10 +109,22 @@ export function HomeDataRoomsTable({ rooms }: HomeDataRoomsTableProps) {
                   <Pencil aria-hidden="true" />
                   Rename
                 </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Share2 aria-hidden="true" />
-                  Share
-                </DropdownMenuItem>
+                {room.access === 'OWNER' && rootFolderId && (
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      setShareTarget({
+                        resourceType: 'DATA_ROOM',
+                        resourceId: room.id,
+                        title: room.name,
+                        url: `${window.location.origin}/folders/${rootFolderId}`,
+                        statsFolderId: rootFolderId,
+                      })
+                    }
+                  >
+                    <Share2 aria-hidden="true" />
+                    Share
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
@@ -115,7 +137,8 @@ export function HomeDataRoomsTable({ rooms }: HomeDataRoomsTableProps) {
             </DropdownMenu>
           </div>
         </div>
-      ))}
+        );
+      })}
 
       <RenameDataRoomDialog
         room={renameTarget}
@@ -129,6 +152,21 @@ export function HomeDataRoomsTable({ rooms }: HomeDataRoomsTableProps) {
         open={!!deleteTarget}
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
+        }}
+      />
+      <ShareDialog
+        target={shareTarget}
+        open={!!shareTarget}
+        onOpenChange={(open) => {
+          if (!open) setShareTarget(null);
+        }}
+        onRequestRevoke={setRevokeTarget}
+      />
+      <RevokeShareDialog
+        target={revokeTarget}
+        open={!!revokeTarget}
+        onOpenChange={(open) => {
+          if (!open) setRevokeTarget(null);
         }}
       />
     </section>

@@ -71,6 +71,8 @@ function FolderPage() {
           <>
             <FolderToolbar
               folderId={id}
+              dataRoomId={folder.data.body.dataRoomId}
+              isRoot={folder.data.body.isRoot}
               roomName={roomName}
               displayName={displayName}
               breadcrumbs={folder.data.body.breadcrumbs}
