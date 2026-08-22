@@ -12,6 +12,9 @@ interface AppSidebarProps {
   user: Pick<User, 'name' | 'email'>;
   /** The Data Room currently being browsed, if any — see `NavSection`. */
   activeDataRoomId?: string;
+  /** Ids of every `FOLDER`/`FILE`-type "Shared with me" entry that's active for the
+   * current view — see `NavSection`. */
+  activeSharedItemIds?: string[];
 }
 
 /**
@@ -19,7 +22,7 @@ interface AppSidebarProps {
  * `<Header/>` used to for authenticated users; see `app-shell.tsx` for why it
  * replaces `<Header/>` rather than sitting alongside it.
  */
-export function AppSidebar({ user, activeDataRoomId }: AppSidebarProps) {
+export function AppSidebar({ user, activeDataRoomId, activeSharedItemIds }: AppSidebarProps) {
   const signOut = useSignOut();
   // No loading/error treatment here beyond falling back to `NavSection`'s `emptyText` —
   // the Home route (routes/home-route.tsx) owns the real loading/error UI for this same
@@ -76,6 +79,8 @@ export function AppSidebar({ user, activeDataRoomId }: AppSidebarProps) {
           title="Shared with me"
           emptyText="Nothing shared with you"
           items={sharedItems}
+          activeDataRoomId={activeDataRoomId}
+          activeSharedItemIds={activeSharedItemIds}
         />
       </nav>
 

@@ -131,51 +131,55 @@ export function FolderChildrenTable({ items, parentId, isOwner }: FolderChildren
               {dateFormatter.format(new Date(item.updatedAt))}
             </div>
             <div className="flex justify-end">
-              {isOwner && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="muted"
-                      size="icon"
-                      aria-label={`More actions for ${item.name}`}
-                    >
-                      <MoreVertical className="size-4.5" aria-hidden="true" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem asChild>
-                      <Link to="/folders/$id" params={{ id: item.id }}>
-                        <ChevronRight aria-hidden="true" />
-                        Open
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setRenameTarget(item)}>
-                      <Pencil aria-hidden="true" />
-                      Rename
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onSelect={() =>
-                        setShareTarget({
-                          resourceType: 'FOLDER',
-                          resourceId: item.id,
-                          title: item.name,
-                          url: `${window.location.origin}/folders/${item.id}`,
-                          statsFolderId: item.id,
-                        })
-                      }
-                    >
-                      <Share2 aria-hidden="true" />
-                      Share
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem variant="destructive" onSelect={() => setDeleteTarget(item)}>
-                      <Trash2 aria-hidden="true" />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="icon"
+                    type="button"
+                    variant="muted"
+                    aria-label={`More actions for ${item.name}`}
+                  >
+                    <MoreVertical className="size-4.5" aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem asChild>
+                    <Link to="/folders/$id" params={{ id: item.id }}>
+                      <ChevronRight aria-hidden="true" />
+                      Open
+                    </Link>
+                  </DropdownMenuItem>
+
+                  {isOwner && (
+                    <>
+                      <DropdownMenuItem onSelect={() => setRenameTarget(item)}>
+                        <Pencil aria-hidden="true" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          setShareTarget({
+                            resourceType: 'FOLDER',
+                            resourceId: item.id,
+                            title: item.name,
+                            url: `${window.location.origin}/folders/${item.id}`,
+                            statsFolderId: item.id,
+                          })
+                        }
+                      >
+                        <Share2 aria-hidden="true" />
+                        Share
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant="destructive" onSelect={() => setDeleteTarget(item)}>
+                        <Trash2 aria-hidden="true" />
+                        Delete
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         ) : (

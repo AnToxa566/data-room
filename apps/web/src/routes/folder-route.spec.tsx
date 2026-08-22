@@ -980,14 +980,21 @@ describe('FolderPage — recipient views (non-owner)', () => {
     breadcrumbs,
     sharedRootType,
     children = [],
+    sharedWithMe = [],
   }: {
     folder?: Folder;
     breadcrumbs: { id: string; name: string }[];
     sharedRootType: 'DATA_ROOM' | 'FOLDER';
     children?: unknown[];
+    /** The sidebar's "Shared with me" list — see `AppSidebar`. Defaults to empty; pass
+     * an entry to assert its active state in the sidebar nav. */
+    sharedWithMe?: unknown[];
   }) {
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
       const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/shares/shared-with-me')) {
+        return jsonResponse({ items: sharedWithMe, nextCursor: null });
+      }
       if (url.includes(`/folders/${folder.id}/children`)) {
         return jsonResponse({ items: children, nextCursor: null });
       }
@@ -1130,5 +1137,150 @@ describe('FolderPage — recipient views (non-owner)', () => {
     expect(within(page).queryByRole('button', { name: 'New folder' })).toBeNull();
     expect(within(page).queryByRole('button', { name: /^Upload/ })).toBeNull();
     expect(within(page).queryByRole('button', { name: 'Share' })).toBeNull();
+  });
+
+  it('marks a FOLDER-type "Shared with me" sidebar entry active at its own root', async () => {
+    const sharedWithMe = [
+      {
+        resourceType: 'FOLDER',
+        resourceId: legal.id,
+        name: legal.name,
+        role: 'VIEWER',
+        sharedByEmail: 'legal@ashcroft-mill.com',
+        folderId: legal.id,
+      },
+    ];
+    // Breadcrumbs is just the folder itself (self-last, per `FoldersService.get`) when
+    // standing exactly on the shared root.
+    stubRecipientFolderApi({
+      breadcrumbs: [{ id: legal.id, name: legal.name }],
+      sharedRootType: 'FOLDER',
+      sharedWithMe,
+    });
+    renderRouterAt('/folders/folder-2', { status: 'authenticated', user: recipient });
+
+    const nav = await screen.findByRole('navigation', { name: 'Your Data Rooms' });
+    await within(nav).findByRole('link', { name: legal.name });
+    // The "Shared with me" list loads independently of the folder query that supplies
+    // `activeSharedItemId` — wait for both to settle rather than asserting the instant
+    // the link first appears.
+    await waitFor(() => {
+      expect(within(nav).getByRole('link', { name: legal.name })).toHaveProperty(
+        'ariaCurrent',
+        'page',
+      );
+    });
+  });
+
+  it('keeps a FOLDER-type "Shared with me" sidebar entry active several levels into its subtree', async () => {
+    const sharedWithMe = [
+      {
+        resourceType: 'FOLDER',
+        resourceId: legal.id,
+        name: legal.name,
+        role: 'VIEWER',
+        sharedByEmail: 'legal@ashcroft-mill.com',
+        folderId: legal.id,
+      },
+    ];
+    const subfolder: Folder = {
+      id: 'folder-3',
+      name: 'Contracts',
+      dataRoomId: room.id,
+      parentId: legal.id,
+      path: '/folder-1/folder-2/folder-3/',
+      depth: 2,
+      createdAt: '2026-01-05T00:00:00.000Z',
+      updatedAt: '2026-01-05T00:00:00.000Z',
+    };
+    // Breadcrumbs is truncated to start at the shared root, but still starts with its id.
+    stubRecipientFolderApi({
+      folder: subfolder,
+      breadcrumbs: [
+        { id: legal.id, name: legal.name },
+        { id: subfolder.id, name: subfolder.name },
+      ],
+      sharedRootType: 'FOLDER',
+      sharedWithMe,
+    });
+    renderRouterAt('/folders/folder-3', { status: 'authenticated', user: recipient });
+
+    const nav = await screen.findByRole('navigation', { name: 'Your Data Rooms' });
+    await within(nav).findByRole('link', { name: legal.name });
+    await waitFor(() => {
+      expect(within(nav).getByRole('link', { name: legal.name })).toHaveProperty(
+        'ariaCurrent',
+        'page',
+      );
+    });
+  });
+
+  it('marks a DATA_ROOM-type "Shared with me" sidebar entry active at the room root and at depth', async () => {
+    const sharedWithMe = [
+      {
+        resourceType: 'DATA_ROOM',
+        resourceId: room.id,
+        name: room.name,
+        role: 'VIEWER',
+        sharedByEmail: 'legal@ashcroft-mill.com',
+        folderId: rootFolder.id,
+      },
+    ];
+    stubRecipientFolderApi({
+      folder: legal,
+      breadcrumbs: [
+        { id: rootFolder.id, name: rootFolder.name },
+        { id: legal.id, name: legal.name },
+      ],
+      sharedRootType: 'DATA_ROOM',
+      sharedWithMe,
+    });
+    renderRouterAt('/folders/folder-2', { status: 'authenticated', user: recipient });
+
+    const nav = await screen.findByRole('navigation', { name: 'Your Data Rooms' });
+    await within(nav).findByRole('link', { name: room.name });
+    await waitFor(() => {
+      expect(within(nav).getByRole('link', { name: room.name })).toHaveProperty(
+        'ariaCurrent',
+        'page',
+      );
+    });
+  });
+
+  it('keeps a FOLDER-type "Shared with me" entry active even when a wider DATA_ROOM-level share also applies (regression: `resolveShareContext` reports the widest share, not the one "Shared with me" lists)', async () => {
+    // The recipient has a direct FOLDER share on `legal` *and* a wider DATA_ROOM share
+    // also covers the room (e.g. a PUBLIC link) — `sharedRootType` resolves to the
+    // *wider* one (`'DATA_ROOM'`), per `AccessControlService.resolveShareContext`'s
+    // widest-candidate precedence. Breadcrumbs are therefore left untruncated (no `if
+    // (sharedRootType === 'FOLDER')` truncation fires), so `legal`'s id still appears
+    // inside the array even though it isn't `breadcrumbs[0]`.
+    const sharedWithMe = [
+      {
+        resourceType: 'FOLDER',
+        resourceId: legal.id,
+        name: legal.name,
+        role: 'VIEWER',
+        sharedByEmail: 'legal@ashcroft-mill.com',
+        folderId: legal.id,
+      },
+    ];
+    stubRecipientFolderApi({
+      breadcrumbs: [
+        { id: rootFolder.id, name: rootFolder.name },
+        { id: legal.id, name: legal.name },
+      ],
+      sharedRootType: 'DATA_ROOM',
+      sharedWithMe,
+    });
+    renderRouterAt('/folders/folder-2', { status: 'authenticated', user: recipient });
+
+    const nav = await screen.findByRole('navigation', { name: 'Your Data Rooms' });
+    await within(nav).findByRole('link', { name: legal.name });
+    await waitFor(() => {
+      expect(within(nav).getByRole('link', { name: legal.name })).toHaveProperty(
+        'ariaCurrent',
+        'page',
+      );
+    });
   });
 });

@@ -29,6 +29,15 @@ interface NavSectionProps {
    * `AppShell`/`AppSidebar`. Compared against each item's `id`, not the route's folder id,
    * so a room stays highlighted while browsing any of its subfolders, not just its root. */
   activeDataRoomId?: string;
+  /** Ids of every `FOLDER`-type "Shared with me" entry that's an ancestor of (or is)
+   * the folder/file currently being browsed, plus the current file's own id if one is
+   * open — see `activeSharedItemIds` on `AppShell`/`AppSidebar`. A `DATA_ROOM`-type
+   * share matches via `activeDataRoomId` instead (its `resourceId` already *is* the
+   * Data Room id); this covers the other two, whose `resourceId` is a folder/file id
+   * instead. Plural, not a single id: which share is the caller's *widest* one (and so
+   * governs `sharedRootType`/breadcrumb truncation) is unrelated to which direct grants
+   * also apply narrower down the same chain — see `folder-route.tsx`'s doc comment. */
+  activeSharedItemIds?: string[];
 }
 
 const itemClassName =
@@ -40,14 +49,22 @@ const itemClassName =
  * me" item links to whatever was actually shared: a Data Room's or folder's root
  * (`rootFolderId`) or a file directly (`fileId`) — see `file-route.tsx`. The active item
  * (design: accent-tinted background, accent left bar, accent icon) is determined by
- * `activeDataRoomId`, not by `Link`'s own route-match tracking — a room's nav entry links
- * to its *root* folder, so `Link`'s automatic `data-status="active"` would only ever be
- * true there, going dark the moment you browse into a subfolder. Comparing ids instead
- * keeps the room highlighted for its whole subtree. "Shared with me" items never match
- * `activeDataRoomId` (they have no such id to compare) and so never render as active —
- * a deliberate v1 trim, not a bug.
+ * `activeDataRoomId`/`activeSharedItemIds`, not by `Link`'s own route-match tracking — a
+ * room's nav entry links to its *root* folder, so `Link`'s automatic
+ * `data-status="active"` would only ever be true there, going dark the moment you browse
+ * into a subfolder. Comparing ids instead keeps the room highlighted for its whole
+ * subtree. A "Shared with me" item highlights the same way: a `DATA_ROOM`-type share's
+ * `resourceId` already is the Data Room id, so it matches `activeDataRoomId` for free; a
+ * `FOLDER`/`FILE`-type share's `resourceId` is a folder/file id instead, which is what
+ * `activeSharedItemIds` (computed by the folder/file route) matches against.
  */
-export function NavSection({ title, emptyText, items = [], activeDataRoomId }: NavSectionProps) {
+export function NavSection({
+  title,
+  emptyText,
+  items = [],
+  activeDataRoomId,
+  activeSharedItemIds,
+}: NavSectionProps) {
   return (
     <div>
       <div className="px-2 pb-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
@@ -58,7 +75,8 @@ export function NavSection({ title, emptyText, items = [], activeDataRoomId }: N
       ) : (
         <ul className="flex flex-col gap-0.5">
           {items.map((item) => {
-            const isActive = item.id === activeDataRoomId;
+            const isActive =
+              item.id === activeDataRoomId || (activeSharedItemIds?.includes(item.id) ?? false);
             const mark = (
               <span
                 aria-hidden="true"

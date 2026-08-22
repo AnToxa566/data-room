@@ -10,7 +10,8 @@ interface FolderEmptySubfolderStateProps {
   folderId: string;
   folderName: string;
   /** Whether the current caller owns this Data Room — a non-owner (share recipient)
-   * gets the heading only, no New-folder/Upload actions. */
+   * gets the heading plus a "contact whoever shared this" message, no New-folder/Upload
+   * actions, since neither applies to them. */
   isOwner: boolean;
   /** Opens `CreateFolderDialog` — see `routes/folder-route.tsx`, which owns its open state. */
   onNewFolder: () => void;
@@ -25,6 +26,10 @@ interface FolderEmptySubfolderStateProps {
  *
  * "Upload PDFs" opens the native file picker via `UploadButton`. "New folder" opens
  * `CreateFolderDialog`.
+ *
+ * Non-owners (share recipients) can't upload or create folders, so they get a plain
+ * "nothing here yet, contact whoever shared this" message instead of the drag-to-upload
+ * copy, which would otherwise describe an action they have no way to perform.
  */
 export function FolderEmptySubfolderState({
   folderId,
@@ -38,7 +43,9 @@ export function FolderEmptySubfolderState({
         This folder is empty
       </h2>
       <p className="mb-5 text-[13px] text-foreground/85">
-        Drag PDFs here to upload, or create a subfolder to keep the tree organised.
+        {isOwner
+          ? 'Drag PDFs here to upload, or create a subfolder to keep the tree organised.'
+          : 'If you were expecting to find documents here, please contact the person who shared this access with you.'}
       </p>
       {isOwner && (
         <div className="flex flex-wrap gap-2">

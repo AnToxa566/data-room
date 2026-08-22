@@ -11,6 +11,10 @@ interface AppShellProps {
   /** The Data Room currently being browsed, if any — highlights that room's sidebar entry.
    * See `NavSection`. Omitted on routes with no "current room" concept, e.g. `/home`. */
   activeDataRoomId?: string;
+  /** Ids of every `FOLDER`/`FILE`-type "Shared with me" entry that's active for the
+   * current view — see `NavSection`. `DATA_ROOM`-type shares need no separate id; they
+   * already match `activeDataRoomId`. */
+  activeSharedItemIds?: string[];
   /** Set only for a signed-in, non-owner visitor (a share recipient) — see
    * `folder-route.tsx`/`file-route.tsx`. Undefined for the owner's own view (`/home`
    * never passes it), which renders byte-identical to before this prop existed.
@@ -31,10 +35,20 @@ interface AppShellProps {
  * `sharedByEmail` and `folder-route.tsx`). A *signed-out* visitor never reaches this
  * component at all — those routes render `Header` instead.
  */
-export function AppShell({ user, children, activeDataRoomId, sharedByEmail }: AppShellProps) {
+export function AppShell({
+  user,
+  children,
+  activeDataRoomId,
+  activeSharedItemIds,
+  sharedByEmail,
+}: AppShellProps) {
   return (
     <div className="flex flex-1 items-stretch">
-      <AppSidebar user={user} activeDataRoomId={activeDataRoomId} />
+      <AppSidebar
+        user={user}
+        activeDataRoomId={activeDataRoomId}
+        activeSharedItemIds={activeSharedItemIds}
+      />
       <main className="flex min-w-0 flex-1 flex-col">
         <AppTopbar sharedByEmail={sharedByEmail} />
         {children}

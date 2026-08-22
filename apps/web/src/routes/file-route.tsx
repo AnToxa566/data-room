@@ -38,6 +38,21 @@ function FilePage() {
   const folderId = needsFolderFetch ? file.data?.body.folderId : undefined;
   const folder = useFolderQuery(folderId ?? '', { enabled: !!folderId });
 
+  // A FILE-type "Shared with me" entry matches this file's own id — always, regardless
+  // of `sharedRootType`. `sharedRootType` reflects whichever share is *widest* (for the
+  // read-only badge/back-button), which can be `'FOLDER'`/`'DATA_ROOM'` even when a
+  // narrower direct FILE-level grant *also* exists on this exact file — see
+  // `folder-route.tsx`'s identical reasoning for `activeSharedItemIds`. A FOLDER-type
+  // entry matches any id in the containing folder's `breadcrumbs` (fetched whenever
+  // `needsFolderFetch`, i.e. whenever there's a folder to even check) — same "truncation
+  // never cuts below the winning boundary" argument as `folder-route.tsx`. A
+  // `DATA_ROOM`-type share needs no equivalent: its `resourceId` already is
+  // `dataRoomId`, passed to `AppShell` as `activeDataRoomId` below.
+  const activeSharedItemIds = [
+    ...(file.data?.body.id ? [file.data.body.id] : []),
+    ...(folder.data?.body.breadcrumbs.map((crumb) => crumb.id) ?? []),
+  ];
+
   const roomName =
     folder.data && folder.data.body.isRoot ? folder.data.body.dataRoomName : (folder.data?.body.name ?? '');
   // Same rule as `folder-route.tsx`'s `displayName`: the root folder's own `name` column
@@ -106,6 +121,7 @@ function FilePage() {
     <AppShell
       user={auth.user}
       activeDataRoomId={file.data?.body.dataRoomId}
+      activeSharedItemIds={activeSharedItemIds}
       sharedByEmail={isOwner ? undefined : (file.data?.body.sharedByEmail ?? undefined)}
     >
       {pageBody}

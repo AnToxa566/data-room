@@ -548,12 +548,19 @@ describe('FilePage — recipient views (non-owner)', () => {
   function stubRecipientFileApi({
     sharedRootType,
     folder = rootFolder,
+    sharedWithMe = [],
   }: {
     sharedRootType: 'FILE' | 'FOLDER';
     folder?: Folder;
+    /** The sidebar's "Shared with me" list — see `AppSidebar`. Defaults to empty; pass
+     * an entry to assert its active state in the sidebar nav. */
+    sharedWithMe?: unknown[];
   }) {
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
       const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/shares/shared-with-me')) {
+        return jsonResponse({ items: sharedWithMe, nextCursor: null });
+      }
       if (url.includes('/files/file-1')) {
         return jsonResponse({
           ...file,
@@ -637,5 +644,94 @@ describe('FilePage — recipient views (non-owner)', () => {
     expect(
       screen.getAllByText('Read-only · Shared by legal@ashcroft-mill.com').length,
     ).toBeGreaterThan(0);
+  });
+
+  it('marks a FILE-type "Shared with me" sidebar entry active while viewing that file directly', async () => {
+    stubRecipientFileApi({
+      sharedRootType: 'FILE',
+      sharedWithMe: [
+        {
+          resourceType: 'FILE',
+          resourceId: file.id,
+          name: file.name,
+          role: 'VIEWER',
+          sharedByEmail: 'legal@ashcroft-mill.com',
+          folderId: null,
+        },
+      ],
+    });
+    renderRouterAt('/files/file-1', { status: 'authenticated', user: recipient });
+
+    const nav = await screen.findByRole('navigation', { name: 'Your Data Rooms' });
+    await within(nav).findByRole('link', { name: file.name });
+    // The "Shared with me" list loads independently of the file query that supplies
+    // `activeSharedItemIds` — wait for both to settle rather than asserting the instant
+    // the link first appears.
+    await waitFor(() => {
+      expect(within(nav).getByRole('link', { name: file.name })).toHaveProperty(
+        'ariaCurrent',
+        'page',
+      );
+    });
+  });
+
+  it('keeps a FILE-type "Shared with me" entry active even when a wider FOLDER-level share also applies (regression: `sharedRootType` reflects the widest share, not necessarily `\'FILE\'`)', async () => {
+    // The recipient has a direct FILE share on this exact file *and* a wider FOLDER share
+    // also covers its containing folder — `sharedRootType` resolves to the *wider* one
+    // (`'FOLDER'`), per `AccessControlService.resolveShareContext`'s widest-candidate
+    // precedence. The FILE-type entry must still highlight: matching it only ever needs
+    // the file's own id, never `sharedRootType`.
+    stubRecipientFileApi({
+      sharedRootType: 'FOLDER',
+      sharedWithMe: [
+        {
+          resourceType: 'FILE',
+          resourceId: file.id,
+          name: file.name,
+          role: 'VIEWER',
+          sharedByEmail: 'legal@ashcroft-mill.com',
+          folderId: null,
+        },
+      ],
+    });
+    renderRouterAt('/files/file-1', { status: 'authenticated', user: recipient });
+
+    const nav = await screen.findByRole('navigation', { name: 'Your Data Rooms' });
+    await within(nav).findByRole('link', { name: file.name });
+    await waitFor(() => {
+      expect(within(nav).getByRole('link', { name: file.name })).toHaveProperty(
+        'ariaCurrent',
+        'page',
+      );
+    });
+  });
+
+  it('marks a FOLDER-type "Shared with me" sidebar entry active while viewing a file reached by browsing it', async () => {
+    stubRecipientFileApi({
+      sharedRootType: 'FOLDER',
+      folder: subfolder,
+      sharedWithMe: [
+        {
+          resourceType: 'FOLDER',
+          resourceId: subfolder.id,
+          name: subfolder.name,
+          role: 'VIEWER',
+          sharedByEmail: 'legal@ashcroft-mill.com',
+          folderId: subfolder.id,
+        },
+      ],
+    });
+    renderRouterAt('/files/file-1', { status: 'authenticated', user: recipient });
+
+    const nav = await screen.findByRole('navigation', { name: 'Your Data Rooms' });
+    await within(nav).findByRole('link', { name: subfolder.name });
+    // Same reasoning as the FILE-type test above, plus a second async hop here: the
+    // containing folder's own query has to resolve before `activeSharedItemIds` is set.
+    await waitFor(() => {
+      expect(within(nav).getByRole('link', { name: subfolder.name })).toHaveProperty(
+        'ariaCurrent',
+        'page',
+      );
+    });
   });
 });

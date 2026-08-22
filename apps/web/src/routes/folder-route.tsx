@@ -52,6 +52,19 @@ function FolderPage() {
   // above.
   useDocumentTitle(displayName ? `${displayName} — Data Red Rooms` : 'Data Red Rooms');
 
+  // Every id in `breadcrumbs` (self included, self last — see `FoldersService.get`) is a
+  // candidate match for a `FOLDER`-type "Shared with me" entry, not just `breadcrumbs[0]`.
+  // `breadcrumbs[0]` is only the *widest* applicable share's boundary — `resolveShareContext`
+  // reports `sharedRootType`/truncates from there — but a *narrower* direct grant further
+  // down the same ancestor chain (e.g. the recipient also has a plain FOLDER share several
+  // levels below a wider DATA_ROOM share that also applies) still shows up in "Shared with
+  // me" and still needs to highlight while browsing it. Truncation only ever cuts entries
+  // *above* the widest boundary, never below it, so every id from that boundary down to the
+  // current folder survives in `breadcrumbs` regardless of which share won. A `DATA_ROOM`-
+  // type share needs no equivalent here: its `resourceId` already is `dataRoomId`, passed
+  // to `AppShell` as `activeDataRoomId` below.
+  const activeSharedItemIds = folder.data?.body.breadcrumbs.map((crumb) => crumb.id);
+
   const isPending = folder.isPending || children.isPending;
   const isError = folder.isError || children.isError;
   const isNotFound =
@@ -112,8 +125,8 @@ function FolderPage() {
             )
           ) : (
             <FolderChildrenTable
-              items={children.data.body.items}
               parentId={id}
+              items={children.data.body.items}
               isOwner={folder.data.body.isOwner}
             />
           )}
@@ -122,9 +135,9 @@ function FolderPage() {
       {folder.isSuccess && isOwner && (
         <CreateFolderDialog
           parentId={id}
-          dataRoomId={folder.data.body.dataRoomId}
-          folderName={displayName}
           open={createFolderOpen}
+          folderName={displayName}
+          dataRoomId={folder.data.body.dataRoomId}
           onOpenChange={setCreateFolderOpen}
         />
       )}
@@ -138,6 +151,7 @@ function FolderPage() {
     <AppShell
       user={auth.user}
       activeDataRoomId={folder.data?.body.dataRoomId}
+      activeSharedItemIds={activeSharedItemIds}
       sharedByEmail={isOwner ? undefined : (folder.data?.body.sharedByEmail ?? undefined)}
     >
       {pageBody}
