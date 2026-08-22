@@ -54,7 +54,7 @@ export function AppSidebar({ user, activeDataRoomId, activeSharedItemIds }: AppS
   }));
 
   return (
-    <aside className="hidden w-67 shrink-0 flex-col border-r-2 border-border bg-card min-[900px]:flex">
+    <aside className="hidden h-full w-67 shrink-0 flex-col overflow-hidden border-r-2 border-border bg-card min-[900px]:flex">
       <div className="border-b-2 border-border">
         <Link
           to="/home"
@@ -68,7 +68,10 @@ export function AppSidebar({ user, activeDataRoomId, activeSharedItemIds }: AppS
         </Link>
       </div>
 
-      <nav aria-label="Your Data Rooms" className="flex flex-col gap-5 p-3 pt-4">
+      <nav
+        aria-label="Your Data Rooms"
+        className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-3 pt-4"
+      >
         <NavSection
           title="Your Data Rooms"
           emptyText="None yet"

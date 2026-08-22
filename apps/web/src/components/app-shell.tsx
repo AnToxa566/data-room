@@ -43,13 +43,13 @@ export function AppShell({
   sharedByEmail,
 }: AppShellProps) {
   return (
-    <div className="flex flex-1 items-stretch">
+    <div className="flex h-dvh items-stretch overflow-hidden">
       <AppSidebar
         user={user}
         activeDataRoomId={activeDataRoomId}
         activeSharedItemIds={activeSharedItemIds}
       />
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto">
         <AppTopbar sharedByEmail={sharedByEmail} />
         {children}
       </main>
