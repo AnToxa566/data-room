@@ -25,11 +25,13 @@ interface FolderEmptySubfolderStateProps {
  * "fixed" to be consistent, since this is a direct transcription of that state.
  *
  * "Upload PDFs" opens the native file picker via `UploadButton`. "New folder" opens
- * `CreateFolderDialog`.
+ * `CreateFolderDialog`. The body copy's "drag PDFs here" is literal — `routes/
+ * folder-route.tsx` wraps this (and the other two folder-body states) in
+ * `FolderDropZone`, which uploads a drop through the same `enqueueFiles` call.
  *
  * Non-owners (share recipients) can't upload or create folders, so they get a plain
  * "nothing here yet, contact whoever shared this" message instead of the drag-to-upload
- * copy, which would otherwise describe an action they have no way to perform.
+ * copy — `FolderDropZone` itself is inert for them too (see its own `isOwner` gate).
  */
 export function FolderEmptySubfolderState({
   folderId,

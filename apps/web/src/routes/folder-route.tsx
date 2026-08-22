@@ -5,6 +5,7 @@ import { AppShell } from '../components/app-shell';
 import { CreateFolderDialog } from '../components/create-folder-dialog';
 import { FolderChildrenTable } from '../components/folder-children-table';
 import { FolderChildrenTableSkeleton } from '../components/folder-children-table-skeleton';
+import { FolderDropZone } from '../components/folder-drop-zone';
 import { FolderEmptyState } from '../components/folder-empty-state';
 import { FolderEmptySubfolderState } from '../components/folder-empty-subfolder-state';
 import { FolderToolbar } from '../components/folder-toolbar';
@@ -107,29 +108,35 @@ function FolderPage() {
             sharedRootType={folder.data.body.sharedRootType}
             onNewFolder={() => setCreateFolderOpen(true)}
           />
-          {children.data.body.items.length === 0 ? (
-            folder.data.body.isRoot ? (
-              <FolderEmptyState
-                folderId={id}
-                roomName={roomName}
-                isOwner={folder.data.body.isOwner}
-                onNewFolder={() => setCreateFolderOpen(true)}
-              />
+          <FolderDropZone
+            folderId={id}
+            folderName={displayName}
+            isOwner={folder.data.body.isOwner}
+          >
+            {children.data.body.items.length === 0 ? (
+              folder.data.body.isRoot ? (
+                <FolderEmptyState
+                  folderId={id}
+                  roomName={roomName}
+                  isOwner={folder.data.body.isOwner}
+                  onNewFolder={() => setCreateFolderOpen(true)}
+                />
+              ) : (
+                <FolderEmptySubfolderState
+                  folderId={id}
+                  folderName={displayName}
+                  isOwner={folder.data.body.isOwner}
+                  onNewFolder={() => setCreateFolderOpen(true)}
+                />
+              )
             ) : (
-              <FolderEmptySubfolderState
-                folderId={id}
-                folderName={displayName}
+              <FolderChildrenTable
+                parentId={id}
+                items={children.data.body.items}
                 isOwner={folder.data.body.isOwner}
-                onNewFolder={() => setCreateFolderOpen(true)}
               />
-            )
-          ) : (
-            <FolderChildrenTable
-              parentId={id}
-              items={children.data.body.items}
-              isOwner={folder.data.body.isOwner}
-            />
-          )}
+            )}
+          </FolderDropZone>
         </>
       )}
       {folder.isSuccess && isOwner && (

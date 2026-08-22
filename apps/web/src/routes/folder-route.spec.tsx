@@ -73,6 +73,7 @@ function stubFolderApi({
   onCreate,
   onUpdate,
   onDelete,
+  onUploadUrl,
   stats,
 }: {
   children?: unknown[];
@@ -83,6 +84,11 @@ function stubFolderApi({
   onUpdate?: (name: string) => number;
   /** Return a status other than 200 for a delete. */
   onDelete?: () => number;
+  /** Status for `POST /files/upload-url` (`FolderDropZone`'s `enqueueFiles` call).
+   * Defaults to `409` — enough to prove the same request `UploadButton` makes was
+   * reached, without a real `uploadUrl` that `upload-manager.tsx` would then try to
+   * `PUT` bytes to over a real `XMLHttpRequest`. */
+  onUploadUrl?: () => number;
   /** Body for any `GET /folders/:id/stats` call — defaults to an empty subtree. */
   stats?: { totalSize: string; fileCount: number; folderCount: number };
 } = {}) {
@@ -131,6 +137,14 @@ function stubFolderApi({
     // so this is just enough to let the dialog render without an "unhandled fetch" throw.
     if (url.includes('/shares') && method === 'GET') {
       return jsonResponse({ items: [], nextCursor: null });
+    }
+    if (url.includes('/files/upload-url') && method === 'POST') {
+      const status = onUploadUrl ? onUploadUrl() : 409;
+      if (status !== 201) return jsonResponse({ message: 'A file with that name already exists.' }, status);
+      return jsonResponse(
+        { fileId: 'generated-file-1', uploadUrl: 'https://storage.example.com/upload', expiresAt: '2099-01-01T00:00:00.000Z' },
+        201,
+      );
     }
     const singleFolderMatch = /\/folders\/([\w-]+)$/.exec(url);
     if (singleFolderMatch && method === 'PATCH') {
@@ -470,6 +484,140 @@ describe('FolderPage — root, populated', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/folders/folder-child-1'));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('FolderPage — drag-and-drop upload', () => {
+  /** A minimal PDF `File` — `enqueueFiles`' `isPdf` check only looks at `type`/name, not
+   * real PDF bytes. */
+  function pdfFile(name: string) {
+    return new File(['%PDF-1.4'], name, { type: 'application/pdf' });
+  }
+
+  /** `hasFiles`/the browser's own drag-and-drop API key off `dataTransfer.types`, not the
+   * files themselves (those aren't readable until `drop`) — every synthetic drag event
+   * needs `types: ['Files']` to be treated as a file drag by `FolderDropZone`. */
+  function dragOver(target: Element, files: File[] = []) {
+    fireEvent.dragEnter(target, { dataTransfer: { types: ['Files'], files } });
+    fireEvent.dragOver(target, { dataTransfer: { types: ['Files'], files } });
+  }
+
+  function dropFiles(target: Element, files: File[]) {
+    fireEvent.drop(target, { dataTransfer: { types: ['Files'], files } });
+  }
+
+  it('shows the "Drop to upload" overlay while dragging over the root empty state, and hides it on drag-leave', async () => {
+    stubFolderApi();
+    renderRouterAt('/folders/folder-1', { status: 'authenticated', user: mockUser });
+    const page = await screen.findByTestId('folder-page');
+    await within(page).findByText('Nothing in Project Halyard yet');
+
+    const dropZone = within(page).getByText('Nothing in Project Halyard yet').closest('.relative');
+    expect(dropZone).toBeTruthy();
+    if (!dropZone) throw new Error('drop zone not found');
+
+    dragOver(dropZone);
+    expect(await screen.findByText('Drop to upload into Project Halyard')).toBeTruthy();
+
+    fireEvent.dragLeave(dropZone, { relatedTarget: document.body });
+    await waitFor(() =>
+      expect(screen.queryByText('Drop to upload into Project Halyard')).toBeNull(),
+    );
+  });
+
+  it('dropping a file reaches the same upload-url request the Upload button triggers, surfaced in the tray', async () => {
+    stubFolderApi();
+    renderRouterAt('/folders/folder-1', { status: 'authenticated', user: mockUser });
+    const page = await screen.findByTestId('folder-page');
+    await within(page).findByText('Nothing in Project Halyard yet');
+
+    const dropZone = within(page).getByText('Nothing in Project Halyard yet').closest('.relative');
+    if (!dropZone) throw new Error('drop zone not found');
+
+    const file = pdfFile('Trading Update.pdf');
+    dragOver(dropZone, [file]);
+    await screen.findByText('Drop to upload into Project Halyard');
+
+    dropFiles(dropZone, [file]);
+
+    // `FolderDropZone`'s `onDrop` calls the same `enqueueFiles` `UploadButton` does —
+    // the tray opens with the dropped file, and (stubbed 409 above) the same conflict
+    // copy a rejected click-to-upload would show.
+    const tray = await screen.findByRole('region', { name: 'Uploads' });
+    expect(await within(tray).findByText('Trading Update.pdf')).toBeTruthy();
+    expect(
+      await within(tray).findByText('A file named "Trading Update.pdf" already exists in Project Halyard'),
+    ).toBeTruthy();
+
+    // The overlay itself closes on drop.
+    expect(screen.queryByText('Drop to upload into Project Halyard')).toBeNull();
+  });
+
+  it('shows the overlay while dragging over an empty subfolder, naming that folder', async () => {
+    const legal: Folder = {
+      id: 'folder-2',
+      name: 'Legal',
+      dataRoomId: room.id,
+      parentId: rootFolder.id,
+      path: '/folder-1/folder-2/',
+      depth: 1,
+      createdAt: '2026-01-05T00:00:00.000Z',
+      updatedAt: '2026-01-05T00:00:00.000Z',
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        const method = (init?.method ?? 'GET').toUpperCase();
+        if (url.includes('/data-rooms') && method === 'GET') {
+          return jsonResponse({ items: [room, otherRoom], nextCursor: null });
+        }
+        if (url.includes('/folders/folder-2/children') && method === 'GET') {
+          return jsonResponse({ items: [], nextCursor: null });
+        }
+        if (url.includes('/folders/folder-2') && method === 'GET') {
+          return jsonResponse({
+            ...legal,
+            breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }, { id: legal.id, name: legal.name }],
+            isRoot: false,
+            ...OWNER_FOLDER_FIELDS,
+          });
+        }
+        throw new Error(`Unhandled fetch in test: ${method} ${url}`);
+      }),
+    );
+    renderRouterAt('/folders/folder-2', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('folder-page');
+    await within(page).findByText('This folder is empty');
+    const dropZone = within(page).getByText('This folder is empty').closest('.relative');
+    if (!dropZone) throw new Error('drop zone not found');
+
+    dragOver(dropZone);
+    expect(await screen.findByText('Drop to upload into Legal')).toBeTruthy();
+  });
+
+  it('shows the overlay while dragging over a populated folder table', async () => {
+    stubFolderApi({
+      children: [
+        {
+          kind: 'folder',
+          id: 'folder-child-1',
+          name: '02 Financials',
+          createdAt: '2026-01-06T00:00:00.000Z',
+          updatedAt: '2026-01-08T00:00:00.000Z',
+        },
+      ],
+    });
+    renderRouterAt('/folders/folder-1', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('folder-page');
+    await within(page).findByText('02 Financials');
+    const dropZone = within(page).getByText('Name').closest('.relative');
+    if (!dropZone) throw new Error('drop zone not found');
+
+    dragOver(dropZone);
+    expect(await screen.findByText('Drop to upload into Project Halyard')).toBeTruthy();
   });
 });
 
@@ -1137,6 +1285,21 @@ describe('FolderPage — recipient views (non-owner)', () => {
     expect(within(page).queryByRole('button', { name: 'New folder' })).toBeNull();
     expect(within(page).queryByRole('button', { name: /^Upload/ })).toBeNull();
     expect(within(page).queryByRole('button', { name: 'Share' })).toBeNull();
+  });
+
+  it("never shows the drag-and-drop overlay for a non-owner — FolderDropZone renders its children inert", async () => {
+    stubRecipientFolderApi({
+      breadcrumbs: [{ id: legal.id, name: legal.name }],
+      sharedRootType: 'FOLDER',
+    });
+    renderRouterAt('/folders/folder-2', { status: 'authenticated', user: recipient });
+
+    const page = await screen.findByTestId('folder-page');
+    const emptyState = await within(page).findByText('This folder is empty');
+
+    fireEvent.dragEnter(emptyState, { dataTransfer: { types: ['Files'], files: [] } });
+    fireEvent.dragOver(emptyState, { dataTransfer: { types: ['Files'], files: [] } });
+    expect(screen.queryByText(/^Drop to upload into/)).toBeNull();
   });
 
   it('marks a FOLDER-type "Shared with me" sidebar entry active at its own root', async () => {
