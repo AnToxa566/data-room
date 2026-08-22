@@ -21,7 +21,18 @@ describe('AccessControlService', () => {
       dataRoom: { ownerId: string };
       folder: { path: string };
     } | null;
-    shares?: { role: string; mode: string; granteeUserId: string | null }[];
+    shares?: {
+      role: string;
+      mode: string;
+      granteeUserId: string | null;
+      // Only needed by `resolveShareContext` tests (not `resolveAccess`/`requireAccess`,
+      // which never select them) — optional so every existing share fixture above stays
+      // as-is.
+      resourceType?: string;
+      resourceId?: string;
+      createdAt?: Date;
+      createdBy?: { email: string };
+    }[];
   }) {
     const prisma = {
       dataRoom: { findUnique: jest.fn().mockResolvedValue(overrides.dataRoom ?? null) },
@@ -249,6 +260,187 @@ describe('AccessControlService', () => {
 
       await expect(
         service.requireAccess(null, 'DATA_ROOM', 'room-1', 'VIEWER'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('resolveShareContext', () => {
+    it('resolves isOwner: true, with no boundary/attribution, for the owner', async () => {
+      const { service, prisma } = buildService({
+        folder: { dataRoomId: 'room-1', path: '/root-1/folder-1/', dataRoom: { ownerId: 'user-1' } },
+      });
+
+      await expect(
+        service.resolveShareContext('user-1', 'FOLDER', 'folder-1'),
+      ).resolves.toEqual({
+        isOwner: true,
+        sharedByEmail: null,
+        sharedRootType: null,
+        sharedRootId: null,
+      });
+      // The owner branch never needs to look at Share rows at all.
+      expect(prisma.share.findMany).not.toHaveBeenCalled();
+    });
+
+    it('resolves the widest matching candidate as the boundary for a DATA_ROOM-level share on a subfolder', async () => {
+      const { service } = buildService({
+        folder: { dataRoomId: 'room-1', path: '/root-1/folder-1/', dataRoom: { ownerId: 'owner' } },
+        shares: [
+          {
+            role: 'VIEWER',
+            mode: 'EMAIL',
+            granteeUserId: 'user-2',
+            resourceType: 'DATA_ROOM',
+            resourceId: 'room-1',
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+            createdBy: { email: 'owner@example.com' },
+          },
+        ],
+      });
+
+      await expect(
+        service.resolveShareContext('user-2', 'FOLDER', 'folder-1'),
+      ).resolves.toEqual({
+        isOwner: false,
+        sharedByEmail: 'owner@example.com',
+        sharedRootType: 'DATA_ROOM',
+        sharedRootId: 'room-1',
+      });
+    });
+
+    it('resolves the ancestor folder as the boundary for a FOLDER-level share, not the Data Room', async () => {
+      const { service } = buildService({
+        folder: {
+          dataRoomId: 'room-1',
+          path: '/root-1/parent-1/folder-1/',
+          dataRoom: { ownerId: 'owner' },
+        },
+        shares: [
+          {
+            role: 'VIEWER',
+            mode: 'EMAIL',
+            granteeUserId: 'user-2',
+            resourceType: 'FOLDER',
+            resourceId: 'parent-1',
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+            createdBy: { email: 'sharer@example.com' },
+          },
+        ],
+      });
+
+      await expect(
+        service.resolveShareContext('user-2', 'FOLDER', 'folder-1'),
+      ).resolves.toEqual({
+        isOwner: false,
+        sharedByEmail: 'sharer@example.com',
+        sharedRootType: 'FOLDER',
+        sharedRootId: 'parent-1',
+      });
+    });
+
+    it('prefers the wider DATA_ROOM-level share as the boundary over a narrower FOLDER-level share that also applies', async () => {
+      const { service } = buildService({
+        folder: {
+          dataRoomId: 'room-1',
+          path: '/root-1/parent-1/folder-1/',
+          dataRoom: { ownerId: 'owner' },
+        },
+        shares: [
+          {
+            role: 'VIEWER',
+            mode: 'EMAIL',
+            granteeUserId: 'user-2',
+            resourceType: 'FOLDER',
+            resourceId: 'parent-1',
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+            createdBy: { email: 'narrow-sharer@example.com' },
+          },
+          {
+            role: 'VIEWER',
+            mode: 'PUBLIC',
+            granteeUserId: null,
+            resourceType: 'DATA_ROOM',
+            resourceId: 'room-1',
+            createdAt: new Date('2026-01-02T00:00:00.000Z'),
+            createdBy: { email: 'wide-sharer@example.com' },
+          },
+        ],
+      });
+
+      // The narrower FOLDER share is listed first — order must not matter, only
+      // candidate width (shareCandidates is DATA_ROOM-first).
+      await expect(
+        service.resolveShareContext('user-2', 'FOLDER', 'folder-1'),
+      ).resolves.toEqual({
+        isOwner: false,
+        sharedByEmail: 'wide-sharer@example.com',
+        sharedRootType: 'DATA_ROOM',
+        sharedRootId: 'room-1',
+      });
+    });
+
+    it('resolves a FILE-typed boundary for a share directly on the file itself', async () => {
+      const { service } = buildService({
+        file: {
+          dataRoomId: 'room-1',
+          dataRoom: { ownerId: 'owner' },
+          folder: { path: '/root-1/parent-1/' },
+        },
+        shares: [
+          {
+            role: 'VIEWER',
+            mode: 'PUBLIC',
+            granteeUserId: null,
+            resourceType: 'FILE',
+            resourceId: 'file-1',
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+            createdBy: { email: 'sharer@example.com' },
+          },
+        ],
+      });
+
+      await expect(service.resolveShareContext(null, 'FILE', 'file-1')).resolves.toEqual({
+        isOwner: false,
+        sharedByEmail: 'sharer@example.com',
+        sharedRootType: 'FILE',
+        sharedRootId: 'file-1',
+      });
+    });
+
+    it('attributes "shared by" to the strongest-role share when two shares apply at the same (widest) candidate', async () => {
+      const { service } = buildService({
+        folder: { dataRoomId: 'room-1', path: '/root-1/folder-1/', dataRoom: { ownerId: 'owner' } },
+        shares: [
+          {
+            role: 'VIEWER',
+            mode: 'PUBLIC',
+            granteeUserId: null,
+            resourceType: 'FOLDER',
+            resourceId: 'folder-1',
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+            createdBy: { email: 'public-sharer@example.com' },
+          },
+          {
+            role: 'EDITOR',
+            mode: 'EMAIL',
+            granteeUserId: 'user-2',
+            resourceType: 'FOLDER',
+            resourceId: 'folder-1',
+            createdAt: new Date('2026-01-02T00:00:00.000Z'),
+            createdBy: { email: 'invited-by@example.com' },
+          },
+        ],
+      });
+
+      const result = await service.resolveShareContext('user-2', 'FOLDER', 'folder-1');
+      expect(result.sharedByEmail).toBe('invited-by@example.com');
+    });
+
+    it('throws NotFoundException (404) if the resource disappears between the caller\'s own requireAccess and this call', async () => {
+      const { service } = buildService({});
+
+      await expect(
+        service.resolveShareContext('user-1', 'DATA_ROOM', 'room-1'),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });

@@ -5,6 +5,8 @@ import type { Response } from 'express';
 
 import type { Env } from '../../config/env.schema.js';
 
+import { OAUTH_RETURN_TO_COOKIE_NAME } from '../constants.js';
+import { oauthReturnToCookieOptions } from '../cookie.util.js';
 import { UnverifiedEmailException } from '../exceptions/unverified-email.exception.js';
 
 /**
@@ -32,6 +34,10 @@ export class GoogleAuthExceptionFilter implements ExceptionFilter {
     if (reason === 'oauth_failed') {
       this.logger.warn(`Google OAuth callback failed: ${describe(exception)}`);
     }
+
+    // A failed handshake never completes googleCallback's own clear — do it here too,
+    // so a stale returnTo never leaks into an unrelated later login attempt.
+    response.clearCookie(OAUTH_RETURN_TO_COOKIE_NAME, oauthReturnToCookieOptions(this.configService));
 
     response.redirect(`${webAppUrl}?error=${reason}`);
   }

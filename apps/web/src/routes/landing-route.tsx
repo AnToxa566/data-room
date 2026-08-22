@@ -101,7 +101,7 @@ function LandingPage() {
               </p>
             )}
             <div>
-              <Button size="lg" onClick={signInWithGoogle}>
+              <Button size="lg" onClick={() => signInWithGoogle()}>
                 Sign in
                 <ArrowRight className="ml-1.5 size-4" aria-hidden="true" />
               </Button>

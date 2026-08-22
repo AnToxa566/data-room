@@ -41,6 +41,10 @@ interface FolderChildrenTableProps {
   /** The currently-viewed folder — every row here is one of its direct children, needed
    * to invalidate the right children list after a rename/delete. */
   parentId: string;
+  /** Whether the current caller owns this Data Room. A non-owner (share recipient) gets
+   * a read-only row: no folder-row kebab menu at all (its one item, "Open," is redundant
+   * with the row's own name link), and a file row's kebab keeps only View/Download. */
+  isOwner: boolean;
 }
 
 /**
@@ -67,7 +71,7 @@ interface FolderChildrenTableProps {
  * `ShareTarget.resourceType`) rather than one state per kind, since only one Share dialog
  * can ever be open at a time regardless of which row opened it.
  */
-export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProps) {
+export function FolderChildrenTable({ items, parentId, isOwner }: FolderChildrenTableProps) {
   const [renameTarget, setRenameTarget] = useState<Extract<
     FolderChildItem,
     { kind: 'folder' }
@@ -127,49 +131,51 @@ export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProp
               {dateFormatter.format(new Date(item.updatedAt))}
             </div>
             <div className="flex justify-end">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="muted"
-                    size="icon"
-                    aria-label={`More actions for ${item.name}`}
-                  >
-                    <MoreVertical className="size-4.5" aria-hidden="true" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem asChild>
-                    <Link to="/folders/$id" params={{ id: item.id }}>
-                      <ChevronRight aria-hidden="true" />
-                      Open
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setRenameTarget(item)}>
-                    <Pencil aria-hidden="true" />
-                    Rename
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      setShareTarget({
-                        resourceType: 'FOLDER',
-                        resourceId: item.id,
-                        title: item.name,
-                        url: `${window.location.origin}/folders/${item.id}`,
-                        statsFolderId: item.id,
-                      })
-                    }
-                  >
-                    <Share2 aria-hidden="true" />
-                    Share
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive" onSelect={() => setDeleteTarget(item)}>
-                    <Trash2 aria-hidden="true" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {isOwner && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="muted"
+                      size="icon"
+                      aria-label={`More actions for ${item.name}`}
+                    >
+                      <MoreVertical className="size-4.5" aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem asChild>
+                      <Link to="/folders/$id" params={{ id: item.id }}>
+                        <ChevronRight aria-hidden="true" />
+                        Open
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setRenameTarget(item)}>
+                      <Pencil aria-hidden="true" />
+                      Rename
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        setShareTarget({
+                          resourceType: 'FOLDER',
+                          resourceId: item.id,
+                          title: item.name,
+                          url: `${window.location.origin}/folders/${item.id}`,
+                          statsFolderId: item.id,
+                        })
+                      }
+                    >
+                      <Share2 aria-hidden="true" />
+                      Share
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem variant="destructive" onSelect={() => setDeleteTarget(item)}>
+                      <Trash2 aria-hidden="true" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
         ) : (
@@ -210,42 +216,48 @@ export function FolderChildrenTable({ items, parentId }: FolderChildrenTableProp
                       View
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setRenameFileTarget(item)}>
-                    <Pencil aria-hidden="true" />
-                    Rename
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => setMoveFileTarget({ id: item.id, name: item.name, folderId: parentId })}
-                  >
-                    <Move aria-hidden="true" />
-                    Move
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      setShareTarget({
-                        resourceType: 'FILE',
-                        resourceId: item.id,
-                        title: item.name,
-                        url: `${window.location.origin}/files/${item.id}`,
-                        fileSize: item.size,
-                      })
-                    }
-                  >
-                    <Share2 aria-hidden="true" />
-                    Share
-                  </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => downloadFile(item)}>
                     <Download aria-hidden="true" />
                     Download
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onSelect={() => setDeleteFileTarget(item)}
-                  >
-                    <Trash2 aria-hidden="true" />
-                    Delete
-                  </DropdownMenuItem>
+                  {isOwner && (
+                    <>
+                      <DropdownMenuItem onSelect={() => setRenameFileTarget(item)}>
+                        <Pencil aria-hidden="true" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          setMoveFileTarget({ id: item.id, name: item.name, folderId: parentId })
+                        }
+                      >
+                        <Move aria-hidden="true" />
+                        Move
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          setShareTarget({
+                            resourceType: 'FILE',
+                            resourceId: item.id,
+                            title: item.name,
+                            url: `${window.location.origin}/files/${item.id}`,
+                            fileSize: item.size,
+                          })
+                        }
+                      >
+                        <Share2 aria-hidden="true" />
+                        Share
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onSelect={() => setDeleteFileTarget(item)}
+                      >
+                        <Trash2 aria-hidden="true" />
+                        Delete
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

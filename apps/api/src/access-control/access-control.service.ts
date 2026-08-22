@@ -4,7 +4,7 @@ import { PrismaService, ShareMode, type ShareResourceType, type ShareRole } from
 
 import { parsePathIds } from '../folders/path.util.js';
 
-import { ACCESS_RANK, type AccessLevel } from './access-control.types.js';
+import { ACCESS_RANK, type AccessLevel, type ShareContext } from './access-control.types.js';
 
 const RESOURCE_LABEL: Record<ShareResourceType, string> = {
   DATA_ROOM: 'Data Room',
@@ -192,10 +192,7 @@ export class AccessControlService {
 
     let best: ShareRole | null = null;
     for (const share of shares) {
-      const applies =
-        share.mode === ShareMode.PUBLIC ||
-        (userId !== null && share.granteeUserId === userId);
-      if (!applies) {
+      if (!this.shareApplies(userId, share)) {
         continue;
       }
       if (best === null || ACCESS_RANK[share.role] > ACCESS_RANK[best]) {
@@ -203,5 +200,110 @@ export class AccessControlService {
       }
     }
     return best;
+  }
+
+  /**
+   * Whether an active `Share` row grants access to `userId` — `PUBLIC` grants to every
+   * caller, including `userId: null`; `EMAIL` only when its resolved `granteeUserId`
+   * matches (`granteeEmail` is never read as an access key, see ARCHITECTURE.md §4).
+   * Extracted so this security-sensitive predicate exists in exactly one place —
+   * `resolveShareLevel`'s strongest-role loop and `resolveShareContext`'s boundary walk
+   * below both call it, rather than each re-implementing the same check.
+   */
+  private shareApplies(
+    userId: string | null,
+    share: { mode: ShareMode; granteeUserId: string | null },
+  ): boolean {
+    return share.mode === ShareMode.PUBLIC || (userId !== null && share.granteeUserId === userId);
+  }
+
+  /**
+   * Resolves a non-owner caller's "virtual root" for `resourceId` — which share is the
+   * widest match, and who created it — for display purposes (a "Read-only · Shared by
+   * X" badge, and breadcrumbs scoped to that root; see ARCHITECTURE.md §4: "the shared
+   * resource becomes their virtual root, and breadcrumbs are computed relative to it").
+   *
+   * Must be called only after the caller's own `requireAccess(...)` has already
+   * confirmed access — this method assumes the resource exists and is reachable, and
+   * re-resolves `resolveResourceContext` independently rather than threading its result
+   * through, at the cost of one extra (cheap, low-traffic) round trip. Used only by
+   * `FoldersService.get`/`FilesService.get`, not the hot `resolveAccess`/`requireAccess`
+   * path every other endpoint goes through — `resolveAccess`'s own signature is
+   * untouched.
+   */
+  async resolveShareContext(
+    userId: string | null,
+    resourceType: ShareResourceType,
+    resourceId: string,
+  ): Promise<ShareContext> {
+    const context = await this.resolveResourceContext(resourceType, resourceId);
+    if (context === null) {
+      // The caller's own requireAccess already confirmed this resource is reachable —
+      // reaching here means it was deleted in the moment between that check and this
+      // one. A genuine race, not a real 404 for a caller who was just looking at it.
+      throw new NotFoundException(`${RESOURCE_LABEL[resourceType]} not found.`);
+    }
+    if (userId !== null && context.ownerId === userId) {
+      return { isOwner: true, sharedByEmail: null, sharedRootType: null, sharedRootId: null };
+    }
+
+    const shares = await this.prisma.share.findMany({
+      where: {
+        revokedAt: null,
+        OR: context.shareCandidates,
+        AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }],
+      },
+      select: {
+        resourceType: true,
+        resourceId: true,
+        role: true,
+        mode: true,
+        granteeUserId: true,
+        createdAt: true,
+        createdBy: { select: { email: true } },
+      },
+    });
+
+    // `shareCandidates` is already widest-to-narrowest (DATA_ROOM, then ancestor
+    // folders root-first, self-last, then the resource itself if applicable) — the
+    // first candidate with >=1 applicable share is this caller's virtual root. A
+    // narrower share can still grant a *stronger role* (that's `resolveShareLevel`'s
+    // job, unrelated) but never moves the boundary.
+    for (const candidate of context.shareCandidates) {
+      const applicable = shares.filter(
+        (share) =>
+          share.resourceType === candidate.resourceType &&
+          share.resourceId === candidate.resourceId &&
+          this.shareApplies(userId, share),
+      );
+      if (applicable.length === 0) {
+        continue;
+      }
+
+      // Multiple shares can apply at the same candidate (e.g. a PUBLIC and an EMAIL
+      // share on the same folder) — attribute "shared by" to the strongest-role one,
+      // tie-broken by earliest createdAt. Display-only choice, not a security decision.
+      let widest = applicable[0];
+      for (const share of applicable.slice(1)) {
+        if (
+          ACCESS_RANK[share.role] > ACCESS_RANK[widest.role] ||
+          (ACCESS_RANK[share.role] === ACCESS_RANK[widest.role] &&
+            share.createdAt < widest.createdAt)
+        ) {
+          widest = share;
+        }
+      }
+
+      return {
+        isOwner: false,
+        sharedByEmail: widest.createdBy.email,
+        sharedRootType: candidate.resourceType,
+        sharedRootId: candidate.resourceId,
+      };
+    }
+
+    // Unreachable given the precondition (the caller's own requireAccess already found
+    // something) — defensive only, same reasoning as the null-context throw above.
+    throw new NotFoundException(`${RESOURCE_LABEL[resourceType]} not found.`);
   }
 }

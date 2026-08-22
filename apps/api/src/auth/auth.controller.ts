@@ -7,8 +7,9 @@ import { AuthService } from './auth.service.js';
 import { Public } from './decorators/public.decorator.js';
 import { GoogleAuthExceptionFilter } from './filters/google-auth-exception.filter.js';
 import { GoogleAuthGuard } from './guards/google-auth.guard.js';
-import { sessionCookieMaxAgeMs, sessionCookieOptions } from './cookie.util.js';
-import { SESSION_COOKIE_NAME } from './constants.js';
+import { oauthReturnToCookieOptions, sessionCookieMaxAgeMs, sessionCookieOptions } from './cookie.util.js';
+import { OAUTH_RETURN_TO_COOKIE_NAME, SESSION_COOKIE_NAME } from './constants.js';
+import { parseReturnTo } from './return-to.util.js';
 import type { GoogleProfile } from './types.js';
 
 /**
@@ -41,6 +42,11 @@ export class AuthController {
       ...sessionCookieOptions(this.configService),
       maxAge: sessionCookieMaxAgeMs(this.configService),
     });
-    res.redirect(this.configService.get('WEB_APP_URL', { infer: true }));
+
+    const returnTo = parseReturnTo(req.cookies?.[OAUTH_RETURN_TO_COOKIE_NAME] as string | undefined);
+    res.clearCookie(OAUTH_RETURN_TO_COOKIE_NAME, oauthReturnToCookieOptions(this.configService));
+
+    const webAppUrl = this.configService.get('WEB_APP_URL', { infer: true });
+    res.redirect(returnTo ? `${webAppUrl}${returnTo}` : webAppUrl);
   }
 }

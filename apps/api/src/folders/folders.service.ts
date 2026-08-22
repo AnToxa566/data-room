@@ -106,6 +106,7 @@ export class FoldersService {
   async get(userId: string | null, id: string) {
     await this.accessControl.requireAccess(userId, 'FOLDER', id, 'VIEWER');
     const folder = await this.findOrThrow(id);
+    const shareContext = await this.accessControl.resolveShareContext(userId, 'FOLDER', id);
 
     // Ancestor ids come from parsing `path` (root-first, self-last), then a single query
     // fetches every ancestor row — never a parentId loop. See AGENTS.md Part 3.
@@ -115,11 +116,33 @@ export class FoldersService {
       select: { id: true, name: true },
     });
     const byId = new Map(ancestors.map((ancestor) => [ancestor.id, ancestor]));
-    const breadcrumbs = ancestorIds
+    const fullBreadcrumbs = ancestorIds
       .map((ancestorId) => byId.get(ancestorId))
       .filter((ancestor): ancestor is { id: string; name: string } => ancestor !== undefined);
 
-    return toFolderWithBreadcrumbsDto(folder, breadcrumbs);
+    // Truncate to the caller's virtual root — see ARCHITECTURE.md §4 ("breadcrumbs are
+    // computed relative to [the shared folder]"). No-op for the owner (sharedRootType is
+    // null) and for a DATA_ROOM-level share (breadcrumbs already start at the room root,
+    // index 0).
+    let breadcrumbs = fullBreadcrumbs;
+    if (shareContext.sharedRootType === 'FOLDER') {
+      const boundaryIndex = fullBreadcrumbs.findIndex(
+        (ancestor) => ancestor.id === shareContext.sharedRootId,
+      );
+      // Always found in practice — sharedRootId came from resolving the same ancestor
+      // chain this method just built. A defensive no-op fallback, not a throw, since
+      // this only affects display.
+      if (boundaryIndex >= 0) {
+        breadcrumbs = fullBreadcrumbs.slice(boundaryIndex);
+      }
+    }
+
+    const dataRoom = await this.prisma.dataRoom.findUnique({
+      where: { id: folder.dataRoomId },
+      select: { name: true },
+    });
+
+    return toFolderWithBreadcrumbsDto(folder, breadcrumbs, dataRoom?.name ?? '', shareContext);
   }
 
   /** `VIEWER` minimum — see `get`'s doc comment. */

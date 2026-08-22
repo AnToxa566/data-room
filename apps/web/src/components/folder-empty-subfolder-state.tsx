@@ -9,6 +9,9 @@ interface FolderEmptySubfolderStateProps {
    * tray copy ("Uploaded to {folderName}"). */
   folderId: string;
   folderName: string;
+  /** Whether the current caller owns this Data Room — a non-owner (share recipient)
+   * gets the heading only, no New-folder/Upload actions. */
+  isOwner: boolean;
   /** Opens `CreateFolderDialog` — see `routes/folder-route.tsx`, which owns its open state. */
   onNewFolder: () => void;
 }
@@ -26,6 +29,7 @@ interface FolderEmptySubfolderStateProps {
 export function FolderEmptySubfolderState({
   folderId,
   folderName,
+  isOwner,
   onNewFolder,
 }: FolderEmptySubfolderStateProps) {
   return (
@@ -36,15 +40,17 @@ export function FolderEmptySubfolderState({
       <p className="mb-5 text-[13px] text-foreground/85">
         Drag PDFs here to upload, or create a subfolder to keep the tree organised.
       </p>
-      <div className="flex flex-wrap gap-2">
-        <UploadButton folderId={folderId} folderName={folderName} variant="default">
-          <Upload className="size-4" aria-hidden="true" />
-          Upload PDFs
-        </UploadButton>
-        <Button variant="outline" onClick={onNewFolder}>
-          New folder
-        </Button>
-      </div>
+      {isOwner && (
+        <div className="flex flex-wrap gap-2">
+          <UploadButton folderId={folderId} folderName={folderName} variant="default">
+            <Upload className="size-4" aria-hidden="true" />
+            Upload PDFs
+          </UploadButton>
+          <Button variant="outline" onClick={onNewFolder}>
+            New folder
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

@@ -6,7 +6,14 @@ import { AuthGuard, IAuthModuleOptions } from '@nestjs/passport';
 import type { CookieOptions, Request, Response } from 'express';
 
 import type { Env } from '../../config/env.schema.js';
-import { OAUTH_STATE_COOKIE_NAME, OAUTH_STATE_TTL_MS } from '../constants.js';
+import { oauthReturnToCookieOptions } from '../cookie.util.js';
+import {
+  OAUTH_RETURN_TO_COOKIE_NAME,
+  OAUTH_RETURN_TO_TTL_MS,
+  OAUTH_STATE_COOKIE_NAME,
+  OAUTH_STATE_TTL_MS,
+} from '../constants.js';
+import { parseReturnTo } from '../return-to.util.js';
 
 /**
  * Wraps `AuthGuard('google')` to add OAuth `state` CSRF protection without a server-side
@@ -40,6 +47,18 @@ export class GoogleAuthGuard extends AuthGuard('google') {
     if (!isCallback) {
       const state = randomBytes(32).toString('hex');
       response.cookie(OAUTH_STATE_COOKIE_NAME, state, this.stateCookieOptions());
+
+      // A validated in-app path only — see parseReturnTo. Set as its own cookie, never
+      // folded into `state` itself (that value is compared with `timingSafeEqual` as a
+      // bare nonce below).
+      const returnTo = parseReturnTo(request.query['returnTo']);
+      if (returnTo) {
+        response.cookie(OAUTH_RETURN_TO_COOKIE_NAME, returnTo, {
+          ...oauthReturnToCookieOptions(this.configService),
+          maxAge: OAUTH_RETURN_TO_TTL_MS,
+        });
+      }
+
       return { state };
     }
 

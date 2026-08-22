@@ -51,6 +51,16 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+/** The access-context fields every `GET /folders/:id` response now carries (see
+ * `libs/contracts/src/lib/folders.ts`) — every scenario in this file is `mockUser`
+ * browsing their own room as its owner, so these are identical everywhere. */
+const OWNER_FOLDER_FIELDS = {
+  dataRoomName: room.name,
+  isOwner: true,
+  sharedByEmail: null,
+  sharedRootType: null,
+} as const;
+
 /**
  * `FolderPage` calls `useFolderQuery`, `useFolderChildrenQuery`, and (via `AppSidebar`/
  * for the room-name lookup) `useDataRoomsQuery` — three real `fetch`es, same "no MSW"
@@ -158,6 +168,7 @@ function stubFolderApi({
         ...rootFolder,
         breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
         isRoot: true,
+        ...OWNER_FOLDER_FIELDS,
       });
     }
     throw new Error(`Unhandled fetch in test: ${method} ${url}`);
@@ -287,6 +298,7 @@ describe('FolderPage — creating a folder', () => {
             ...rootFolder,
             breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
             isRoot: true,
+            ...OWNER_FOLDER_FIELDS,
           });
         }
         throw new Error(`Unhandled fetch in test: ${method} ${url}`);
@@ -471,6 +483,7 @@ describe('FolderPage — renaming a folder', () => {
             ...rootFolder,
             breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
             isRoot: true,
+            ...OWNER_FOLDER_FIELDS,
           });
         }
         throw new Error(`Unhandled fetch in test: ${method} ${url}`);
@@ -579,6 +592,7 @@ describe('FolderPage — deleting a folder', () => {
           ...rootFolder,
           breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
           isRoot: true,
+          ...OWNER_FOLDER_FIELDS,
         });
       }
       throw new Error(`Unhandled fetch in test: ${method} ${url}`);
@@ -646,6 +660,7 @@ describe('FolderPage — deleting a folder', () => {
             ...rootFolder,
             breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
             isRoot: true,
+            ...OWNER_FOLDER_FIELDS,
           });
         }
         throw new Error(`Unhandled fetch in test: ${method} ${url}`);
@@ -778,7 +793,12 @@ describe('FolderPage — breadcrumb navigation', () => {
         const folder = allFolders.find((f) => f.id === folderMatch[1]);
         if (!folder) return jsonResponse({ message: 'Not found.' }, 404);
         const breadcrumbs = ancestorsOf(folder).map((f) => ({ id: f.id, name: f.name }));
-        return jsonResponse({ ...folder, breadcrumbs, isRoot: folder.parentId === null });
+        return jsonResponse({
+          ...folder,
+          breadcrumbs,
+          isRoot: folder.parentId === null,
+          ...OWNER_FOLDER_FIELDS,
+        });
       }
       throw new Error(`Unhandled fetch in test: ${method} ${url}`);
     });
@@ -890,5 +910,191 @@ describe('FolderPage — breadcrumb navigation', () => {
 
       expect(await screen.findByRole('heading', { name: 'New folder' })).toBeTruthy();
     });
+  });
+});
+
+describe('FolderPage — recipient views (non-owner)', () => {
+  // A different user than `mockUser` (the room's owner) — irrelevant to the
+  // signed-out cases, but stands in for "the share recipient" in the signed-in ones.
+  const recipient: User = {
+    id: '22222222-2222-4222-8222-222222222222',
+    email: 'reviewer@counterparty.example',
+    name: 'Sam Reviewer',
+    avatarUrl: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  const legal: Folder = {
+    id: 'folder-2',
+    name: 'Legal',
+    dataRoomId: room.id,
+    parentId: rootFolder.id,
+    path: '/folder-1/folder-2/',
+    depth: 1,
+    createdAt: '2026-01-05T00:00:00.000Z',
+    updatedAt: '2026-01-05T00:00:00.000Z',
+  };
+
+  /** Stubs `GET /folders/:id` as a non-owner would see it — `isOwner: false` plus the
+   * share-attribution fields `FoldersService.get` now computes, per `sharedRootType`.
+   * Deliberately does *not* stub `/data-rooms` — a non-owner (share recipient) view no
+   * longer calls it at all (see `folder-route.tsx`'s `roomName`), so an accidental call
+   * would fail loudly here instead of silently reusing an owner-only endpoint. */
+  function stubRecipientFolderApi({
+    folder = legal,
+    breadcrumbs,
+    sharedRootType,
+    children = [],
+  }: {
+    folder?: Folder;
+    breadcrumbs: { id: string; name: string }[];
+    sharedRootType: 'DATA_ROOM' | 'FOLDER';
+    children?: unknown[];
+  }) {
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes(`/folders/${folder.id}/children`)) {
+        return jsonResponse({ items: children, nextCursor: null });
+      }
+      if (url.includes(`/folders/${folder.id}`)) {
+        return jsonResponse({
+          ...folder,
+          breadcrumbs,
+          isRoot: folder.parentId === null,
+          dataRoomName: room.name,
+          isOwner: false,
+          sharedByEmail: 'legal@ashcroft-mill.com',
+          sharedRootType,
+        });
+      }
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('reaches the folder page signed out, instead of redirecting to "/" (the bug this fix addresses)', async () => {
+    stubRecipientFolderApi({
+      breadcrumbs: [{ id: legal.id, name: legal.name }],
+      sharedRootType: 'FOLDER',
+    });
+    const { router } = renderRouterAt('/folders/folder-2', { status: 'unauthenticated' });
+
+    expect(await screen.findByTestId('folder-page')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/folders/folder-2');
+  });
+
+  it('signed out: shows the chrome-free header with the read-only badge and a Sign in button, no sidebar', async () => {
+    stubRecipientFolderApi({
+      breadcrumbs: [{ id: legal.id, name: legal.name }],
+      sharedRootType: 'FOLDER',
+    });
+    renderRouterAt('/folders/folder-2', { status: 'unauthenticated' });
+
+    await screen.findByTestId('folder-page');
+    expect(screen.queryByRole('navigation', { name: 'Your Data Rooms' })).toBeNull();
+    // Badge text lives in `Header`, a sibling of the `folder-page` div, not inside it.
+    expect(
+      await screen.findByText('Read-only · Shared by legal@ashcroft-mill.com'),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
+  });
+
+  it('signed out: hides every mutation control (New folder, Upload, Share; folder rows lose their kebab entirely, file rows keep only View/Download)', async () => {
+    stubRecipientFolderApi({
+      breadcrumbs: [{ id: legal.id, name: legal.name }],
+      sharedRootType: 'FOLDER',
+      children: [
+        {
+          kind: 'folder',
+          id: 'folder-3',
+          name: 'Contracts',
+          createdAt: '2026-01-06T00:00:00.000Z',
+          updatedAt: '2026-01-06T00:00:00.000Z',
+        },
+        {
+          kind: 'file',
+          id: 'file-1',
+          name: 'NDA.pdf',
+          size: '2048',
+          mimeType: 'application/pdf',
+          createdAt: '2026-01-06T00:00:00.000Z',
+          updatedAt: '2026-01-06T00:00:00.000Z',
+        },
+      ],
+    });
+    renderRouterAt('/folders/folder-2', { status: 'unauthenticated' });
+
+    const page = await screen.findByTestId('folder-page');
+    await within(page).findByText('NDA.pdf');
+    expect(within(page).queryByRole('button', { name: 'New folder' })).toBeNull();
+    expect(within(page).queryByRole('button', { name: /^Upload/ })).toBeNull();
+    expect(within(page).queryByRole('button', { name: 'Share' })).toBeNull();
+    // The folder row's kebab is gone entirely — nothing left in it but "Open," which is
+    // redundant with the row's own name link (see `FolderChildrenTable`).
+    expect(within(page).queryByRole('button', { name: 'More actions for Contracts' })).toBeNull();
+    // The file row keeps its kebab, but only View/Download — no Rename/Move/Share/Delete.
+    fireEvent.pointerDown(within(page).getByRole('button', { name: 'More actions for NDA.pdf' }), {
+      button: 0,
+    });
+    expect(await screen.findByRole('menuitem', { name: 'View' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Download' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Rename' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Move' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Share' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull();
+  });
+
+  it('signed out, Data-Room-level share (viewing the room root): breadcrumb pill reads "Shared Data Room"', async () => {
+    stubRecipientFolderApi({
+      folder: rootFolder,
+      breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
+      sharedRootType: 'DATA_ROOM',
+    });
+    renderRouterAt('/folders/folder-1', { status: 'unauthenticated' });
+
+    const page = await screen.findByTestId('folder-page');
+    const nav = await within(page).findByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(nav).getByText('Shared Data Room')).toBeTruthy();
+    // The root folder's stored '/' placeholder is swapped for the real room name, same
+    // as the owner's own view — a DATA_ROOM-level share's root genuinely is the room root.
+    expect(within(nav).getByText('Project Halyard')).toBeTruthy();
+  });
+
+  it('signed in: keeps the sidebar (AppShell), shows the inline badge, and prepends a "Shared with me" crumb', async () => {
+    stubRecipientFolderApi({
+      breadcrumbs: [{ id: legal.id, name: legal.name }],
+      sharedRootType: 'FOLDER',
+    });
+    renderRouterAt('/folders/folder-2', { status: 'authenticated', user: recipient });
+
+    const page = await screen.findByTestId('folder-page');
+    expect(await screen.findByRole('navigation', { name: 'Your Data Rooms' })).toBeTruthy();
+    const nav = await within(page).findByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(nav).getByRole('link', { name: 'Shared with me' })).toBeTruthy();
+    expect(within(nav).getByText('Shared folder')).toBeTruthy();
+    // A real folder name at the truncated root must not be overwritten with the room
+    // name (see `FolderBreadcrumbs`'s `rootIsDataRoom` — this is the load-bearing case).
+    expect(within(nav).getByText('Legal')).toHaveProperty('ariaCurrent', 'page');
+    // Two badge instances exist in the DOM (AppTopbar's narrow one, FolderToolbar's wide
+    // one) — CSS breakpoints pick one per real viewport, but jsdom renders both.
+    expect(
+      screen.getAllByText('Read-only · Shared by legal@ashcroft-mill.com').length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('signed in: hides every mutation control, same as signed out', async () => {
+    stubRecipientFolderApi({
+      breadcrumbs: [{ id: legal.id, name: legal.name }],
+      sharedRootType: 'FOLDER',
+    });
+    renderRouterAt('/folders/folder-2', { status: 'authenticated', user: recipient });
+
+    const page = await screen.findByTestId('folder-page');
+    await within(page).findByText('This folder is empty');
+    expect(within(page).queryByRole('button', { name: 'New folder' })).toBeNull();
+    expect(within(page).queryByRole('button', { name: /^Upload/ })).toBeNull();
+    expect(within(page).queryByRole('button', { name: 'Share' })).toBeNull();
   });
 });

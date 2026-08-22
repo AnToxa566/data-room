@@ -322,12 +322,17 @@ describe('Shares (e2e)', () => {
     });
 
     it('never exposes what is above the shared folder to an anonymous visitor', async () => {
-      const { cookie } = await createUserAndCookie('anon-virtual-root-owner');
+      const { cookie, user } = await createUserAndCookie('anon-virtual-root-owner');
       const room = await createRoom(cookie, 'Room');
       const shared = await createFolder(cookie, {
         dataRoomId: room.id,
         parentId: room.rootFolderId,
         name: 'Shared',
+      });
+      const nested = await createFolder(cookie, {
+        dataRoomId: room.id,
+        parentId: shared.id,
+        name: 'Nested',
       });
       await request(app.getHttpServer())
         .post('/api/shares')
@@ -335,21 +340,112 @@ describe('Shares (e2e)', () => {
         .send({ resourceType: 'FOLDER', resourceId: shared.id, mode: 'public' })
         .expect(201);
 
+      // `breadcrumbs` is truncated server-side to the caller's virtual root — see
+      // AccessControlService.resolveShareContext and ARCHITECTURE.md §4 ("breadcrumbs
+      // are computed relative to [the shared folder]"). The true ancestors above
+      // `shared` (here, the Data Room's own root) must not appear at all, not merely be
+      // unreachable if guessed — this is the fix for a real information leak this test
+      // previously only partially covered (it used to assert the ancestor id *did*
+      // still appear in `breadcrumbs`, just that navigating to it 404s).
       const res = await request(app.getHttpServer())
         .get(`/api/folders/${shared.id}`)
         .expect(200);
+      expect(res.body.breadcrumbs).toEqual([{ id: shared.id, name: 'Shared' }]);
+      expect(res.body.isOwner).toBe(false);
+      expect(res.body.sharedByEmail).toBe(user.email);
+      expect(res.body.sharedRootType).toBe('FOLDER');
 
-      // `breadcrumbs` includes the shared folder itself (last entry) as well as its true
-      // ancestors — see FoldersService.get. Only the true ancestors (everything above
-      // the shared folder, here just the Data Room's root) must stay invisible; the
-      // shared folder's own id trivially 200s, already proven above.
-      const breadcrumbIds = (res.body.breadcrumbs as { id: string }[])
-        .map((b) => b.id)
-        .filter((id) => id !== shared.id);
-      expect(breadcrumbIds).toContain(room.rootFolderId);
-      for (const ancestorId of breadcrumbIds) {
-        await request(app.getHttpServer()).get(`/api/folders/${ancestorId}`).expect(404);
-      }
+      // Still true regardless: the Data Room's true root is unreachable directly.
+      await request(app.getHttpServer()).get(`/api/folders/${room.rootFolderId}`).expect(404);
+
+      // Navigating *down* into a subfolder of the shared folder keeps the same virtual
+      // root — `Shared` stays breadcrumbs[0], never re-derived per request.
+      const nestedRes = await request(app.getHttpServer())
+        .get(`/api/folders/${nested.id}`)
+        .expect(200);
+      expect(nestedRes.body.breadcrumbs).toEqual([
+        { id: shared.id, name: 'Shared' },
+        { id: nested.id, name: 'Nested' },
+      ]);
+      expect(nestedRes.body.sharedRootType).toBe('FOLDER');
+    });
+
+    it('does not truncate breadcrumbs for a Data-Room-level share — the true root is the caller\'s own virtual root', async () => {
+      const { cookie } = await createUserAndCookie('anon-dataroom-share-owner');
+      const room = await createRoom(cookie, 'Whole Room Shared');
+      const child = await createFolder(cookie, {
+        dataRoomId: room.id,
+        parentId: room.rootFolderId,
+        name: 'Child',
+      });
+      await request(app.getHttpServer())
+        .post('/api/shares')
+        .set('Cookie', cookie)
+        .send({ resourceType: 'DATA_ROOM', resourceId: room.id, mode: 'public' })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/folders/${child.id}`)
+        .expect(200);
+      expect(res.body.breadcrumbs).toEqual([
+        { id: room.rootFolderId, name: '/' },
+        { id: child.id, name: 'Child' },
+      ]);
+      expect(res.body.isOwner).toBe(false);
+      expect(res.body.sharedRootType).toBe('DATA_ROOM');
+    });
+
+    it('attributes "Shared by" to the share creator\'s email, on both folders and files', async () => {
+      const { cookie, user } = await createUserAndCookie('anon-sharedby-owner');
+      const room = await createRoom(cookie, 'Attribution Room');
+      const folder = await createFolder(cookie, {
+        dataRoomId: room.id,
+        parentId: room.rootFolderId,
+        name: 'Attribution Folder',
+      });
+      const file = await uploadReadyFile(cookie, folder.id, 'terms.pdf');
+      await request(app.getHttpServer())
+        .post('/api/shares')
+        .set('Cookie', cookie)
+        .send({ resourceType: 'FOLDER', resourceId: folder.id, mode: 'public' })
+        .expect(201);
+
+      const folderRes = await request(app.getHttpServer())
+        .get(`/api/folders/${folder.id}`)
+        .expect(200);
+      expect(folderRes.body.sharedByEmail).toBe(user.email);
+
+      // The file's access is inherited from the folder-level share — its own
+      // sharedRootType reflects that (FOLDER, not FILE — no share sits directly on it).
+      const fileRes = await request(app.getHttpServer()).get(`/api/files/${file.id}`).expect(200);
+      expect(fileRes.body.isOwner).toBe(false);
+      expect(fileRes.body.sharedByEmail).toBe(user.email);
+      expect(fileRes.body.sharedRootType).toBe('FOLDER');
+    });
+
+    it('a FILE-level share does not grant independent access to its containing folder', async () => {
+      const { cookie } = await createUserAndCookie('anon-file-share-owner');
+      const room = await createRoom(cookie, 'File Share Room');
+      const folder = await createFolder(cookie, {
+        dataRoomId: room.id,
+        parentId: room.rootFolderId,
+        name: 'Not Shared Itself',
+      });
+      const file = await uploadReadyFile(cookie, folder.id, 'single-file.pdf');
+      await request(app.getHttpServer())
+        .post('/api/shares')
+        .set('Cookie', cookie)
+        .send({ resourceType: 'FILE', resourceId: file.id, mode: 'public' })
+        .expect(201);
+
+      const fileRes = await request(app.getHttpServer()).get(`/api/files/${file.id}`).expect(200);
+      expect(fileRes.body.isOwner).toBe(false);
+      expect(fileRes.body.sharedRootType).toBe('FILE');
+
+      // The containing folder was never shared on its own — an anonymous visitor who
+      // only has the file's link cannot browse into it. This is exactly why
+      // `apps/web/src/routes/file-route.tsx` must not attempt to fetch it in this case.
+      await request(app.getHttpServer()).get(`/api/folders/${folder.id}`).expect(404);
     });
   });
 

@@ -11,14 +11,19 @@ import { ConfigService } from '@nestjs/config';
 
 import { FileStatus, PrismaService } from '@dataroom/database';
 import type { File as PrismaFile } from '@dataroom/database';
-import type { CreateUploadUrlBody, File as ContractFile, UpdateFileBody } from '@dataroom/contracts';
+import type {
+  CreateUploadUrlBody,
+  File as ContractFile,
+  FileWithAccessContext,
+  UpdateFileBody,
+} from '@dataroom/contracts';
 
 import { AccessControlService } from '../access-control/access-control.service.js';
 import type { Env } from '../config/env.schema.js';
 import { isUniqueConstraintViolation } from '../common/prisma-error.util.js';
 import { StorageService } from '../storage/storage.service.js';
 
-import { toFileDto } from './file.mapper.js';
+import { toFileDto, toFileWithAccessContextDto } from './file.mapper.js';
 import { buildStorageKey } from './storage-key.util.js';
 
 export interface CreateUploadUrlResult {
@@ -125,9 +130,11 @@ export class FilesService {
    * grantee, and an anonymous public-link visitor (`userId: null`) can all reach it. See
    * FoldersService.get's identical note; `update`/`delete`/upload stay `OWNER`-only.
    */
-  async get(userId: string | null, id: string): Promise<ContractFile> {
+  async get(userId: string | null, id: string): Promise<FileWithAccessContext> {
     await this.accessControl.requireAccess(userId, 'FILE', id, 'VIEWER');
-    return toFileDto(await this.findFileOrThrow(id));
+    const file = await this.findFileOrThrow(id);
+    const shareContext = await this.accessControl.resolveShareContext(userId, 'FILE', id);
+    return toFileWithAccessContextDto(file, shareContext);
   }
 
   /** `VIEWER` minimum — see `get`'s doc comment. */

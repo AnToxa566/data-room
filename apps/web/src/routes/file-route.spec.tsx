@@ -64,6 +64,23 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+/** The access-context fields every `GET /folders/:id`/`GET /files/:id` response now
+ * carries (see `libs/contracts/src/lib/folders.ts`/`files.ts`) — every scenario in this
+ * file is `mockUser` browsing their own room as its owner, so these are identical
+ * everywhere. Not needed on `PATCH /files/:id` responses — that endpoint's 200 is still
+ * plain `FileSchema`, unchanged by this contract extension. */
+const OWNER_FOLDER_FIELDS = {
+  dataRoomName: room.name,
+  isOwner: true,
+  sharedByEmail: null,
+  sharedRootType: null,
+} as const;
+const OWNER_FILE_FIELDS = {
+  isOwner: true,
+  sharedByEmail: null,
+  sharedRootType: null,
+} as const;
+
 /**
  * `FilePage` calls `useFileQuery`, `useFolderQuery` (for the containing folder's
  * breadcrumb/back-button data), and `useDataRoomsQuery` (for the room name) — three real
@@ -97,13 +114,14 @@ function stubFileApi({
     }
     if (url.includes(`/files/${fileOverride.id}`)) {
       if (fileStatus !== 200) return jsonResponse({ message: 'Not found.' }, fileStatus);
-      return jsonResponse(fileOverride);
+      return jsonResponse({ ...fileOverride, ...OWNER_FILE_FIELDS });
     }
     if (url.includes(`/folders/${folder.id}`)) {
       return jsonResponse({
         ...folder,
         breadcrumbs: [{ id: folder.id, name: folder.name }],
         isRoot: folder.parentId === null,
+        ...OWNER_FOLDER_FIELDS,
       });
     }
     // `ShareDialog` (opened from `FileViewerHeader`'s "Share" button) always queries the
@@ -221,13 +239,14 @@ describe('FilePage — renaming a file', () => {
           return pendingPatch;
         }
         if (url.includes('/files/file-1') && method === 'GET') {
-          return jsonResponse(file);
+          return jsonResponse({ ...file, ...OWNER_FILE_FIELDS });
         }
         if (url.includes('/folders/folder-1') && method === 'GET') {
           return jsonResponse({
             ...rootFolder,
             breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
             isRoot: true,
+            ...OWNER_FOLDER_FIELDS,
           });
         }
         throw new Error(`Unhandled fetch in test: ${method} ${url}`);
@@ -283,7 +302,7 @@ describe('FilePage — moving a file', () => {
           return pendingPatch;
         }
         if (url.includes('/files/file-1') && method === 'GET') {
-          return jsonResponse(file);
+          return jsonResponse({ ...file, ...OWNER_FILE_FIELDS });
         }
         if (url.includes('/folders/folder-1/children') && method === 'GET') {
           return jsonResponse({
@@ -307,6 +326,7 @@ describe('FilePage — moving a file', () => {
             ...rootFolder,
             breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
             isRoot: true,
+            ...OWNER_FOLDER_FIELDS,
           });
         }
         if (url.includes(`/folders/${subfolder.id}`) && method === 'GET') {
@@ -317,6 +337,7 @@ describe('FilePage — moving a file', () => {
               { id: subfolder.id, name: subfolder.name },
             ],
             isRoot: false,
+            ...OWNER_FOLDER_FIELDS,
           });
         }
         throw new Error(`Unhandled fetch in test: ${method} ${url}`);
@@ -377,7 +398,7 @@ describe('FilePage — deleting a file', () => {
         return pendingDelete;
       }
       if (url.includes('/files/file-1') && method === 'GET') {
-        return jsonResponse(file);
+        return jsonResponse({ ...file, ...OWNER_FILE_FIELDS });
       }
       if (url.includes('/folders/folder-1/children') && method === 'GET') {
         return jsonResponse({ items: [], nextCursor: null });
@@ -387,6 +408,7 @@ describe('FilePage — deleting a file', () => {
           ...rootFolder,
           breadcrumbs: [{ id: rootFolder.id, name: rootFolder.name }],
           isRoot: true,
+          ...OWNER_FOLDER_FIELDS,
         });
       }
       throw new Error(`Unhandled fetch in test: ${method} ${url}`);
@@ -470,5 +492,116 @@ describe('FilePage — errors', () => {
       'textContent',
       "Couldn't load this file. Try refreshing the page.",
     );
+  });
+});
+
+describe('FilePage — recipient views (non-owner)', () => {
+  const recipient: User = {
+    id: '22222222-2222-4222-8222-222222222222',
+    email: 'reviewer@counterparty.example',
+    name: 'Sam Reviewer',
+    avatarUrl: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  /** Stubs `GET /files/:id` (and, only when `sharedRootType !== 'FILE'`, the containing
+   * folder) as a non-owner would see it. Deliberately serves *no* `/folders/:id` handler
+   * when `sharedRootType === 'FILE'` — a FILE-level share doesn't grant independent
+   * access to its folder, so `file-route.tsx` must not even attempt that fetch (see
+   * `needsFolderFetch`); an unstubbed request would throw "Unhandled fetch in test" and
+   * fail loudly if the route regressed to fetching it anyway. */
+  function stubRecipientFileApi({
+    sharedRootType,
+    folder = rootFolder,
+  }: {
+    sharedRootType: 'FILE' | 'FOLDER';
+    folder?: Folder;
+  }) {
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/files/file-1')) {
+        return jsonResponse({
+          ...file,
+          folderId: folder.id,
+          isOwner: false,
+          sharedByEmail: 'legal@ashcroft-mill.com',
+          sharedRootType,
+        });
+      }
+      if (sharedRootType !== 'FILE' && url.includes(`/folders/${folder.id}`)) {
+        return jsonResponse({
+          ...folder,
+          breadcrumbs: [{ id: folder.id, name: folder.name }],
+          isRoot: folder.parentId === null,
+          dataRoomName: room.name,
+          isOwner: false,
+          sharedByEmail: 'legal@ashcroft-mill.com',
+          sharedRootType: folder.parentId === null ? 'DATA_ROOM' : 'FOLDER',
+        });
+      }
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('reaches the file page signed out, instead of redirecting to "/" (the bug this fix addresses)', async () => {
+    stubRecipientFileApi({ sharedRootType: 'FILE' });
+    const { router } = renderRouterAt('/files/file-1', { status: 'unauthenticated' });
+
+    expect(await screen.findByTestId('file-page')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/files/file-1');
+  });
+
+  it('FILE-level share: never fetches the containing folder, shows the "Shared file · read-only" pill, and has no Back button', async () => {
+    const fetchMock = stubRecipientFileApi({ sharedRootType: 'FILE' });
+    renderRouterAt('/files/file-1', { status: 'unauthenticated' });
+
+    const page = await screen.findByTestId('file-page');
+    expect(await within(page).findByText('Shared file · read-only')).toBeTruthy();
+    expect(within(page).queryByRole('link', { name: /Legal|root|Project Halyard/ })).toBeNull();
+    // The regression this guards: a permanently-disabled folder query must not leave the
+    // page hung on its skeleton forever (see `needsFolderFetch` in `file-route.tsx`).
+    expect(within(page).queryByText('NDA.pdf')).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        (typeof input === 'string' ? input : input.toString()).includes('/folders/'),
+      ),
+    ).toBe(false);
+  });
+
+  it('FILE-level share: hides Share and the kebab menu, keeps Download', async () => {
+    stubRecipientFileApi({ sharedRootType: 'FILE' });
+    renderRouterAt('/files/file-1', { status: 'unauthenticated' });
+
+    const page = await screen.findByTestId('file-page');
+    await within(page).findByText('NDA.pdf');
+    expect(within(page).queryByRole('button', { name: 'Share' })).toBeNull();
+    expect(within(page).queryByRole('button', { name: 'More actions' })).toBeNull();
+    expect(within(page).getByRole('button', { name: 'Download' })).toBeTruthy();
+  });
+
+  it('FOLDER-level share (file reached by browsing): fetches the containing folder and shows a working Back button', async () => {
+    stubRecipientFileApi({ sharedRootType: 'FOLDER', folder: subfolder });
+    const { router } = renderRouterAt('/files/file-1', { status: 'unauthenticated' });
+
+    const page = await screen.findByTestId('file-page');
+    const back = await within(page).findByRole('link', { name: /Legal/ });
+    expect(within(page).queryByText('Shared file · read-only')).toBeNull();
+    fireEvent.click(back);
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/folders/${subfolder.id}`));
+  });
+
+  it('signed in: keeps the sidebar (AppShell) and shows the inline read-only badge', async () => {
+    stubRecipientFileApi({ sharedRootType: 'FILE' });
+    renderRouterAt('/files/file-1', { status: 'authenticated', user: recipient });
+
+    await screen.findByTestId('file-page');
+    expect(await screen.findByRole('navigation', { name: 'Your Data Rooms' })).toBeTruthy();
+    expect(
+      screen.getAllByText('Read-only · Shared by legal@ashcroft-mill.com').length,
+    ).toBeGreaterThan(0);
   });
 });

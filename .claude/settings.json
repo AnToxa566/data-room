@@ -12,7 +12,8 @@
       "Bash(command -v chromium-cli)",
       "Bash(find / -maxdepth 6 -iname \"*chromium-cli*\")",
       "Bash(node -e ' *)",
-      "Bash(xargs -I{} basename {})"
+      "Bash(xargs -I{} basename {})",
+      "Bash(xargs -I{} wc -l {})"
     ]
   },
   "enabledPlugins": {

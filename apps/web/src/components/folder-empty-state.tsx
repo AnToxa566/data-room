@@ -15,6 +15,9 @@ interface FolderEmptyStateProps {
   roomName: string;
   /** The root folder — where `UploadButton` uploads into. */
   folderId: string;
+  /** Whether the current caller owns this Data Room — a non-owner (share recipient)
+   * gets the heading and reference list only, no New-folder/Upload actions. */
+  isOwner: boolean;
   /** Opens `CreateFolderDialog` — see `routes/folder-route.tsx`, which owns its open state. */
   onNewFolder: () => void;
 }
@@ -26,7 +29,12 @@ interface FolderEmptyStateProps {
  * `CreateFolderDialog`, same as `FolderToolbar`'s button; "Upload PDFs" opens the native
  * file picker via `UploadButton`.
  */
-export function FolderEmptyState({ roomName, folderId, onNewFolder }: FolderEmptyStateProps) {
+export function FolderEmptyState({
+  roomName,
+  folderId,
+  isOwner,
+  onNewFolder,
+}: FolderEmptyStateProps) {
   return (
     <div className="grid grid-cols-1 items-start gap-10 border-b-2 border-border py-13 min-[900px]:grid-cols-2">
       <div>
@@ -40,16 +48,18 @@ export function FolderEmptyState({ roomName, folderId, onNewFolder }: FolderEmpt
           Start with the top-level folders you want counterparties to see, then upload
           PDFs into them. Nothing is visible to anyone until you share it.
         </p>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="default" onClick={onNewFolder}>
-            <FolderPlus className="size-4" aria-hidden="true" />
-            New folder
-          </Button>
-          <UploadButton folderId={folderId} folderName={roomName} variant="outline">
-            <Upload className="size-4" aria-hidden="true" />
-            Upload PDFs
-          </UploadButton>
-        </div>
+        {isOwner && (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="default" onClick={onNewFolder}>
+              <FolderPlus className="size-4" aria-hidden="true" />
+              New folder
+            </Button>
+            <UploadButton folderId={folderId} folderName={roomName} variant="outline">
+              <Upload className="size-4" aria-hidden="true" />
+              Upload PDFs
+            </UploadButton>
+          </div>
+        )}
       </div>
       <div className="border-t border-border pt-6 min-[900px]:border-t-0 min-[900px]:border-l-2 min-[900px]:pt-0 min-[900px]:pl-6">
         <div className="mb-3 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">

@@ -5,6 +5,25 @@ import { ErrorSchema, FileSchema } from './common.js';
 
 const c = initContract();
 
+/** The type of resource whose share is the caller's "virtual root" for a file they're
+ * viewing as a non-owner. `'FILE'` means the share is on the file itself directly — its
+ * containing folder is *not* independently accessible to this caller, so the frontend
+ * must not fetch it (see `routes/file-route.tsx`). `'FOLDER'`/`'DATA_ROOM'` mean the file
+ * was reached by browsing a shared ancestor, so the containing folder is safe to fetch. */
+export const SharedFileRootTypeSchema = z.enum(['DATA_ROOM', 'FOLDER', 'FILE']);
+export type SharedFileRootType = z.infer<typeof SharedFileRootTypeSchema>;
+
+/** `GET /files/:id`'s response shape — `FileSchema` plus the caller's access context.
+ * Deliberately not folded into the base `FileSchema`: that schema is also used by
+ * `complete`/`update`, both owner-only, where these fields would always be the same
+ * trivial values. */
+export const FileWithAccessContextSchema = FileSchema.extend({
+  isOwner: z.boolean(),
+  sharedByEmail: z.string().email().nullable(),
+  sharedRootType: SharedFileRootTypeSchema.nullable(),
+});
+export type FileWithAccessContext = z.infer<typeof FileWithAccessContextSchema>;
+
 export const CreateUploadUrlBodySchema = z.object({
   folderId: z.string().uuid(),
   name: z.string().min(1).max(255),
@@ -78,12 +97,12 @@ export const filesContract = c.router({
     method: 'GET',
     path: '/files/:id',
     responses: {
-      200: FileSchema,
+      200: FileWithAccessContextSchema,
       401: ErrorSchema,
       403: ErrorSchema,
       404: ErrorSchema,
     },
-    summary: 'File metadata.',
+    summary: 'File metadata, plus the caller\'s access context.',
   },
   downloadUrl: {
     method: 'GET',

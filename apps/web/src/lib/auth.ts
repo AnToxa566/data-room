@@ -32,9 +32,15 @@ export function useCurrentUser(): CurrentUserState {
 /**
  * OAuth requires a top-level navigation — an XHR to this endpoint would follow the
  * redirect to Google in the background and silently fail to move the user anywhere.
+ *
+ * `returnTo` (an in-app path, e.g. `window.location.pathname`) round-trips through the
+ * OAuth handshake — see `apps/api/src/auth/return-to.util.ts` — so the callback can land
+ * the visitor back where they started instead of the default `/`. Omit it (as both
+ * existing call sites that have nothing to return to do) to get today's behavior.
  */
-export function signInWithGoogle(): void {
-  window.location.href = `${API_BASE}/auth/google`;
+export function signInWithGoogle(returnTo?: string): void {
+  const query = returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : '';
+  window.location.href = `${API_BASE}/auth/google${query}`;
 }
 
 /**

@@ -12,12 +12,32 @@ import {
 
 const c = initContract();
 
+/** The type of resource whose share is the caller's "virtual root" for a folder they're
+ * viewing as a non-owner — never `'FOLDER'`-shared-as-`'FILE'` (a folder's share
+ * candidates can never include a FILE-type share, see AccessControlService). */
+export const SharedRootTypeSchema = z.enum(['DATA_ROOM', 'FOLDER']);
+export type SharedRootType = z.infer<typeof SharedRootTypeSchema>;
+
 export const FolderWithBreadcrumbsSchema = FolderSchema.extend({
   breadcrumbs: z.array(BreadcrumbSchema),
   // Whether this folder is the root of its Data Room — the root can't be renamed,
   // moved, or deleted independently, and the UI needs to know that without a second
   // request. See ARCHITECTURE.md §4.
   isRoot: z.boolean(),
+  // The owning Data Room's display name — substitutes for the root folder's own `name`
+  // column (a fixed '/' placeholder, see ARCHITECTURE.md §4) wherever that placeholder
+  // would otherwise be shown. Present for every caller (owner included) so the frontend
+  // never needs a separate, owner-only `GET /data-rooms` lookup just to resolve a name.
+  dataRoomName: z.string(),
+  // Whether the current caller owns the Data Room this folder belongs to. `false` for a
+  // share recipient (signed in or anonymous) — see AccessControlService.resolveShareContext.
+  isOwner: z.boolean(),
+  // Who created the share granting a non-owner caller access — null iff isOwner.
+  sharedByEmail: z.string().email().nullable(),
+  // The widest matching share's resource type — the caller's "virtual root", per
+  // ARCHITECTURE.md §4 ("Shared subtrees are scoped... the shared resource becomes their
+  // virtual root"). `breadcrumbs` is already truncated to start there. Null iff isOwner.
+  sharedRootType: SharedRootTypeSchema.nullable(),
 });
 export type FolderWithBreadcrumbs = z.infer<typeof FolderWithBreadcrumbsSchema>;
 

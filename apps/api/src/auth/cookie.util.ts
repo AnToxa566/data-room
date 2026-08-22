@@ -36,3 +36,17 @@ export function sessionCookieMaxAgeMs(configService: ConfigService<Env, true>): 
   }
   return parsed;
 }
+
+/** Same shape/handshake-only path scope as `GoogleAuthGuard`'s own state-cookie
+ * options — kept here, not duplicated in the guard, so both cookies this handshake sets
+ * are built the same way. */
+export function oauthReturnToCookieOptions(configService: ConfigService<Env, true>): CookieOptions {
+  const domain = configService.get('COOKIE_DOMAIN', { infer: true });
+  return {
+    httpOnly: true,
+    secure: configService.get('COOKIE_SECURE', { infer: true }),
+    sameSite: configService.get('COOKIE_SAME_SITE', { infer: true }),
+    path: '/api/auth/google',
+    ...(domain ? { domain } : {}),
+  };
+}

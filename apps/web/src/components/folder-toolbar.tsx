@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { FolderPlus, Share2, Upload } from 'lucide-react';
 
-import type { Breadcrumb } from '@dataroom/contracts';
+import type { Breadcrumb, SharedRootType } from '@dataroom/contracts';
 import { Button } from '@dataroom/ui';
 
 import { FolderBreadcrumbs } from './folder-breadcrumbs';
+import { ReadOnlyBadge } from './read-only-badge';
 import { RevokeShareDialog, type RevokeShareTarget } from './revoke-share-dialog';
 import { ShareDialog, type ShareTarget } from './share-dialog';
 import { UploadButton } from './upload-button';
@@ -30,18 +31,35 @@ interface FolderToolbarProps {
    * same URL, matching the design's own `scopeLabel` (its synthetic root id renders as
    * `kind: 'Data Room'`, not a folder). */
   isRoot: boolean;
+  /** Whether the current caller owns this Data Room — `folder.data.body.isOwner`. Gates
+   * every mutation control (New folder/Upload/Share) and the breadcrumb's owner trail;
+   * `false` renders the read-only recipient treatment instead. */
+  isOwner: boolean;
+  /** Whether the current caller is signed in — controls whether the inline read-only
+   * badge and the "Shared with me" leading breadcrumb crumb appear (signed-in only; a
+   * signed-out visitor gets the badge from `Header` instead, and has no "Shared with me"
+   * list to link to). Irrelevant when `isOwner`. */
+  signedIn: boolean;
+  /** Who shared this resource — `folder.data.body.sharedByEmail`. Null when `isOwner`. */
+  sharedByEmail: string | null;
+  /** The caller's virtual root's type — `folder.data.body.sharedRootType`. Null when
+   * `isOwner`; otherwise selects the "Shared folder"/"Shared Data Room" breadcrumb label. */
+  sharedRootType: SharedRootType | null;
   /** Opens `CreateFolderDialog` — see `routes/folder-route.tsx`, which owns its open state. */
   onNewFolder: () => void;
 }
 
 /**
  * The breadcrumb + title + action-buttons row atop the folder browser. The breadcrumb trail
- * itself (`Data Rooms > <Room> > … > <Folder>`, with ellipsis-collapsing past 5 segments) is
- * `FolderBreadcrumbs` — see that file for the collapsing rule.
+ * itself (`Data Rooms > <Room> > … > <Folder>` for the owner, or the scoped recipient trail
+ * — see `FolderBreadcrumbs`) is `FolderBreadcrumbs`.
  *
  * "New folder" opens `CreateFolderDialog`. "Upload" opens the native file picker via
  * `UploadButton` — see `lib/upload-manager.tsx`. "Share" opens `ShareDialog`, targeting the
- * Data Room when `isRoot`, the folder otherwise — see `isRoot`'s doc comment.
+ * Data Room when `isRoot`, the folder otherwise — see `isRoot`'s doc comment. All three are
+ * owner-only — a non-owner reaching this route (a share recipient) sees the title and
+ * breadcrumb only, plus an inline "Read-only · Shared by X" badge when signed in and wide
+ * (see `ReadOnlyBadge`; the narrow/signed-out equivalent lives in `AppTopbar`/`Header`).
  */
 export function FolderToolbar({
   roomName,
@@ -50,6 +68,10 @@ export function FolderToolbar({
   folderId,
   dataRoomId,
   isRoot,
+  isOwner,
+  signedIn,
+  sharedByEmail,
+  sharedRootType,
   onNewFolder,
 }: FolderToolbarProps) {
   const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
@@ -78,7 +100,19 @@ export function FolderToolbar({
 
   return (
     <>
-      <FolderBreadcrumbs roomName={roomName} breadcrumbs={breadcrumbs} />
+      <FolderBreadcrumbs
+        roomName={roomName}
+        breadcrumbs={breadcrumbs}
+        rootIsDataRoom={isOwner || sharedRootType === 'DATA_ROOM'}
+        scope={
+          isOwner
+            ? undefined
+            : {
+                label: sharedRootType === 'DATA_ROOM' ? 'Shared Data Room' : 'Shared folder',
+                showSharedWithMeCrumb: signedIn,
+              }
+        }
+      />
 
       <div className="flex flex-wrap items-end gap-4 border-b-2 border-border pb-3.5">
         <div className="min-w-50 flex-1">
@@ -87,20 +121,27 @@ export function FolderToolbar({
           </h1>
           <div className="mt-0.5 text-xs text-muted-foreground">0 files · 0 folders · 0 B total</div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={onNewFolder}>
-            <FolderPlus className="size-4" aria-hidden="true" />
-            New folder
-          </Button>
-          <UploadButton folderId={folderId} folderName={displayName} variant="outline">
-            <Upload className="size-4" aria-hidden="true" />
-            Upload
-          </UploadButton>
-          <Button variant="default" onClick={handleShare}>
-            <Share2 className="size-4" aria-hidden="true" />
-            Share
-          </Button>
-        </div>
+        {isOwner ? (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={onNewFolder}>
+              <FolderPlus className="size-4" aria-hidden="true" />
+              New folder
+            </Button>
+            <UploadButton folderId={folderId} folderName={displayName} variant="outline">
+              <Upload className="size-4" aria-hidden="true" />
+              Upload
+            </UploadButton>
+            <Button variant="default" onClick={handleShare}>
+              <Share2 className="size-4" aria-hidden="true" />
+              Share
+            </Button>
+          </div>
+        ) : (
+          signedIn &&
+          sharedByEmail && (
+            <ReadOnlyBadge sharedByEmail={sharedByEmail} className="hidden min-[900px]:inline-flex" />
+          )
+        )}
       </div>
 
       <ShareDialog
