@@ -9,6 +9,8 @@ import { FolderEmptyState } from '../components/folder-empty-state';
 import { FolderEmptySubfolderState } from '../components/folder-empty-subfolder-state';
 import { FolderToolbar } from '../components/folder-toolbar';
 import { Header } from '../components/header';
+import { NotFoundState } from '../components/not-found-state';
+import { isTsRestErrorWithStatus } from '../lib/api';
 import { useDocumentTitle } from '../lib/document-title';
 import { useFolderChildrenQuery, useFolderQuery } from '../lib/folders';
 import { rootRoute } from './root-route';
@@ -52,14 +54,27 @@ function FolderPage() {
 
   const isPending = folder.isPending || children.isPending;
   const isError = folder.isError || children.isError;
+  const isNotFound =
+    isTsRestErrorWithStatus(folder.error, 404) || isTsRestErrorWithStatus(children.error, 404);
 
   const pageBody = (
     <div
       data-testid="folder-page"
-      className="px-4 pt-4 pb-10 min-[900px]:px-10 min-[900px]:pt-7 min-[900px]:pb-14"
+      className={
+        isNotFound
+          ? 'flex flex-1 flex-col'
+          : 'px-4 pt-4 pb-10 min-[900px]:px-10 min-[900px]:pt-7 min-[900px]:pb-14'
+      }
     >
       {isPending && <FolderChildrenTableSkeleton />}
-      {isError && (
+      {isNotFound && (
+        <NotFoundState
+          kind="folder"
+          signedIn={auth.status === 'authenticated'}
+          email={auth.status === 'authenticated' ? auth.user.email : undefined}
+        />
+      )}
+      {isError && !isNotFound && (
         <p role="alert" className="pt-14 text-sm text-destructive">
           Couldn&apos;t load this folder. Try refreshing the page.
         </p>

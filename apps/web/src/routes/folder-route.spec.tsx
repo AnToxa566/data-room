@@ -260,13 +260,47 @@ describe('FolderPage — root, empty', () => {
   });
 
   it('shows an error message if the folder fails to load', async () => {
-    stubFolderApi({ folderStatus: 404 });
+    stubFolderApi({ folderStatus: 500 });
     renderRouterAt('/folders/folder-1', { status: 'authenticated', user: mockUser });
 
     expect(await screen.findByRole('alert')).toHaveProperty(
       'textContent',
       "Couldn't load this folder. Try refreshing the page.",
     );
+  });
+});
+
+describe('FolderPage — not found', () => {
+  it('shows the signed-in not-found state for a 404, with a link back to the room list', async () => {
+    stubFolderApi({ folderStatus: 404 });
+    renderRouterAt('/folders/folder-1', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('folder-page');
+    expect(await within(page).findByText('This folder can’t be found')).toBeTruthy();
+    expect(within(page).getByText(/You are signed in as ada@example.com/)).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    // Scoped to `page` — the sidebar's own brand link shares this accessible name (see
+    // `app-topbar.tsx`).
+    const link = within(page).getByRole('link', { name: 'Go to your Data Rooms' });
+    expect(link.getAttribute('href')).toBe('/home');
+  });
+
+  it('shows the signed-out not-found state for a 404, with Sign in and About links', async () => {
+    stubFolderApi({ folderStatus: 404 });
+    renderRouterAt('/folders/folder-1', { status: 'unauthenticated' });
+
+    expect(await screen.findByText('This folder can’t be found')).toBeTruthy();
+    expect(
+      screen.getByText('If it was shared with your account by email, sign in and open the link again.'),
+    ).toBeTruthy();
+
+    // Two "Sign in" buttons exist (the chrome-free `Header`'s own, plus this state's) —
+    // asserting there are two is enough; `signInWithGoogle`'s own navigation isn't
+    // exercised here (same reasoning as `header.tsx`'s own tests).
+    expect(screen.getAllByRole('button', { name: 'Sign in' })).toHaveLength(2);
+    const aboutLink = screen.getByRole('link', { name: 'About Data Red Room' });
+    expect(aboutLink.getAttribute('href')).toBe('/');
   });
 });
 

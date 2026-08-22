@@ -5,6 +5,8 @@ import { FileViewerDocument } from '../components/file-viewer-document';
 import { FileViewerHeader } from '../components/file-viewer-header';
 import { FileViewerSkeleton } from '../components/file-viewer-skeleton';
 import { Header } from '../components/header';
+import { NotFoundState } from '../components/not-found-state';
+import { isTsRestErrorWithStatus } from '../lib/api';
 import { useDocumentTitle } from '../lib/document-title';
 import { useFileQuery } from '../lib/files';
 import { useFolderQuery } from '../lib/folders';
@@ -51,12 +53,23 @@ function FilePage() {
   // actually asked to fetch.
   const isPending = file.isPending || (needsFolderFetch && folder.isPending);
   const isError = file.isError || (needsFolderFetch && folder.isError);
+  // A 404 on the file itself is the only case `NotFoundState` covers here — when the file
+  // 404s, `needsFolderFetch` never fires (see above), so the folder query has nothing to
+  // say about "not found" for this route.
+  const isNotFound = isTsRestErrorWithStatus(file.error, 404);
   const ready = file.isSuccess && (!needsFolderFetch || folder.isSuccess);
 
   const pageBody = (
     <div data-testid="file-page" className="flex min-h-0 flex-1 flex-col">
       {isPending && <FileViewerSkeleton />}
-      {isError && (
+      {isNotFound && (
+        <NotFoundState
+          kind="file"
+          signedIn={auth.status === 'authenticated'}
+          email={auth.status === 'authenticated' ? auth.user.email : undefined}
+        />
+      )}
+      {isError && !isNotFound && (
         <p role="alert" className="pt-14 text-center text-sm text-destructive">
           Couldn&apos;t load this file. Try refreshing the page.
         </p>

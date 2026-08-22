@@ -485,13 +485,47 @@ describe('FilePage — not-yet-ready and non-PDF files', () => {
 
 describe('FilePage — errors', () => {
   it('shows an error message if the file fails to load', async () => {
-    stubFileApi({ fileStatus: 404 });
+    stubFileApi({ fileStatus: 500 });
     renderRouterAt('/files/file-1', { status: 'authenticated', user: mockUser });
 
     expect(await screen.findByRole('alert')).toHaveProperty(
       'textContent',
       "Couldn't load this file. Try refreshing the page.",
     );
+  });
+});
+
+describe('FilePage — not found', () => {
+  it('shows the signed-in not-found state for a 404, with a link back to the room list', async () => {
+    stubFileApi({ fileStatus: 404 });
+    renderRouterAt('/files/file-1', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('file-page');
+    expect(await within(page).findByText('This file can’t be found')).toBeTruthy();
+    expect(within(page).getByText(/You are signed in as ada@example.com/)).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    // Scoped to `page` — the sidebar's own brand link shares this accessible name (see
+    // `app-topbar.tsx`).
+    const link = within(page).getByRole('link', { name: 'Go to your Data Rooms' });
+    expect(link.getAttribute('href')).toBe('/home');
+  });
+
+  it('shows the signed-out not-found state for a 404, with Sign in and About links', async () => {
+    stubFileApi({ fileStatus: 404 });
+    renderRouterAt('/files/file-1', { status: 'unauthenticated' });
+
+    expect(await screen.findByText('This file can’t be found')).toBeTruthy();
+    expect(
+      screen.getByText('If it was shared with your account by email, sign in and open the link again.'),
+    ).toBeTruthy();
+
+    // Two "Sign in" buttons exist (the chrome-free `Header`'s own, plus this state's) —
+    // asserting there are two is enough; `signInWithGoogle`'s own navigation isn't
+    // exercised here (same reasoning as `header.tsx`'s own tests).
+    expect(screen.getAllByRole('button', { name: 'Sign in' })).toHaveLength(2);
+    const aboutLink = screen.getByRole('link', { name: 'About Data Red Room' });
+    expect(aboutLink.getAttribute('href')).toBe('/');
   });
 });
 

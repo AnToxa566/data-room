@@ -36,8 +36,12 @@ export const apiClient = initClient(contract, {
  * any non-2xx response (confirmed by reading the installed package's source — it is not
  * limited to statuses undeclared in the contract). This is how a 401 from `GET /auth/me`
  * actually surfaces: as a react-query error, never as a `data.status === 401` success.
+ *
+ * Exported (not just used below for the retry policy) — `folder-route.tsx`/`file-route.tsx`
+ * use this to tell a 404 apart from every other failure, to show `NotFoundState` only for
+ * a confirmed "not found", not for a network error or a 500.
  */
-function isTsRestErrorWithStatus(error: unknown, status: number): boolean {
+export function isTsRestErrorWithStatus(error: unknown, status: number): boolean {
   return (
     typeof error === 'object' &&
     error !== null &&
