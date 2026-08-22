@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 
-import type { DataRoom, DataRoomListItem, User } from '@dataroom/contracts';
+import type { DataRoom, DataRoomListItem, SharedWithMeItem, User } from '@dataroom/contracts';
 
 import { renderRouterAt } from '../test/render-app';
 
@@ -21,12 +21,16 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 /**
- * `AppSidebar` and the Home route both call `useDataRoomsQuery()` (see lib/data-rooms.ts)
- * — a real `fetch`, since there's no MSW/mocking library in this repo yet. Every test that
- * renders `/home` needs `GET /data-rooms` handled, or the query errors and the route falls
- * into its error branch instead of whatever state the test means to exercise.
+ * `AppSidebar` and the Home route both call `useDataRoomsQuery()` and
+ * `useSharedWithMeQuery()` (see lib/data-rooms.ts, lib/shares.ts) — a real `fetch`, since
+ * there's no MSW/mocking library in this repo yet. Every test that renders `/home` needs
+ * `GET /data-rooms` and `GET /shares/shared-with-me` handled, or the query errors and the
+ * route falls into its error branch instead of whatever state the test means to exercise.
  */
-function stubDataRoomsApi(initialRooms: DataRoomListItem[] = []) {
+function stubDataRoomsApi(
+  initialRooms: DataRoomListItem[] = [],
+  sharedWithMe: SharedWithMeItem[] = [],
+) {
   const rooms = [...initialRooms];
   let nextId = 1;
   const fetchMock = vi.fn(async (
@@ -72,6 +76,11 @@ function stubDataRoomsApi(initialRooms: DataRoomListItem[] = []) {
       if (index === -1) return jsonResponse({ message: 'Data Room not found.' }, 404);
       rooms.splice(index, 1);
       return jsonResponse({ success: true });
+    }
+    // Checked before the generic `/shares` branch below, since that URL also contains
+    // `/shares`.
+    if (url.includes('/shares/shared-with-me') && method === 'GET') {
+      return jsonResponse({ items: sharedWithMe, nextCursor: null });
     }
     // `ShareDialog` (opened from a row's "Share" action) always queries the room's
     // current shares — no test here exercises granting/revoking, so this is just enough
@@ -444,5 +453,123 @@ describe('HomePage — populated state', () => {
     // every test its own fresh `QueryClient` (see its doc comment), so that invalidation
     // never reaches this render's cache. Same pre-existing gap the create-room test above
     // works around by not asserting the created room appears in the list either.
+  });
+});
+
+describe('HomePage — shared with me', () => {
+  const sharedItems: SharedWithMeItem[] = [
+    {
+      resourceType: 'DATA_ROOM',
+      resourceId: 'shared-room-1',
+      name: 'Project Northwind',
+      role: 'VIEWER',
+      sharedByEmail: 'grace@example.com',
+      folderId: 'shared-room-1-root',
+    },
+    {
+      resourceType: 'FOLDER',
+      resourceId: 'shared-folder-1',
+      name: 'Diligence',
+      role: 'EDITOR',
+      sharedByEmail: 'grace@example.com',
+      folderId: 'shared-folder-1',
+    },
+    {
+      resourceType: 'FILE',
+      resourceId: 'shared-file-1',
+      name: 'contract.pdf',
+      role: 'VIEWER',
+      sharedByEmail: 'grace@example.com',
+      folderId: null,
+    },
+  ];
+
+  it('lists shared Data Rooms, folders, and files in both the sidebar nav and the Home table', async () => {
+    stubDataRoomsApi([], sharedItems);
+    renderRouterAt('/home', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('home-page');
+    expect(await within(page).findByText('Shared with me')).toBeTruthy();
+    for (const item of sharedItems) {
+      expect(within(page).getAllByText(item.name).length).toBeGreaterThan(0);
+    }
+    expect(
+      within(page).getAllByText(/Shared by grace@example.com/, { exact: false }).length,
+    ).toBe(sharedItems.length);
+
+    const nav = screen.getByRole('navigation', { name: 'Your Data Rooms' });
+    for (const item of sharedItems) {
+      expect(within(nav).getByText(item.name)).toBeTruthy();
+    }
+  });
+
+  it('navigates to a shared Data Room\'s root folder', async () => {
+    stubDataRoomsApi([], sharedItems);
+    const { router } = renderRouterAt('/home', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('home-page');
+    fireEvent.click(await within(page).findByText('Project Northwind'));
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/folders/shared-room-1-root'),
+    );
+  });
+
+  it('navigates to a shared folder directly', async () => {
+    stubDataRoomsApi([], sharedItems);
+    const { router } = renderRouterAt('/home', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('home-page');
+    fireEvent.click(await within(page).findByText('Diligence'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/folders/shared-folder-1'));
+  });
+
+  it('navigates to a shared file directly', async () => {
+    stubDataRoomsApi([], sharedItems);
+    const { router } = renderRouterAt('/home', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('home-page');
+    fireEvent.click(await within(page).findByText('contract.pdf'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/files/shared-file-1'));
+  });
+
+  it('excludes a room shared with the caller from "Owned by you"', async () => {
+    const mixedRooms: DataRoomListItem[] = [
+      {
+        id: 'room-1',
+        name: 'Project Halyard',
+        ownerId: mockUser.id,
+        rootFolderId: 'folder-1',
+        createdAt: '2026-01-05T00:00:00.000Z',
+        updatedAt: '2026-01-05T00:00:00.000Z',
+        access: 'OWNER',
+      },
+      {
+        id: 'room-2',
+        name: 'Project Anchorage',
+        ownerId: 'someone-else',
+        rootFolderId: 'folder-2',
+        createdAt: '2026-01-06T00:00:00.000Z',
+        updatedAt: '2026-01-06T00:00:00.000Z',
+        access: 'VIEWER',
+      },
+    ];
+    stubDataRoomsApi(mixedRooms);
+    renderRouterAt('/home', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('home-page');
+    await within(page).findByText('Owned by you');
+    expect(within(page).getByText('Project Halyard')).toBeTruthy();
+    expect(within(page).queryByText('Project Anchorage')).toBeNull();
+  });
+
+  it('hides the "Shared with me" section entirely when nothing is shared', async () => {
+    stubDataRoomsApi([]);
+    renderRouterAt('/home', { status: 'authenticated', user: mockUser });
+
+    const page = await screen.findByTestId('home-page');
+    // Wait for the owned-rooms empty state (query settled) before asserting the shared
+    // section's absence, so this doesn't just catch it mid-load.
+    await within(page).findByText('You have no Data Rooms yet');
+    await waitFor(() => expect(within(page).queryByText('Shared with me')).toBeNull());
   });
 });

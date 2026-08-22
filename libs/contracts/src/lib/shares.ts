@@ -2,6 +2,7 @@ import { initContract } from '@ts-rest/core';
 import { z } from 'zod';
 
 import {
+  CursorPaginationQuerySchema,
   ErrorSchema,
   ShareResourceTypeSchema,
   ShareRoleSchema,
@@ -47,6 +48,24 @@ export const ListSharesQuerySchema = z.object({
 });
 export type ListSharesQuery = z.infer<typeof ListSharesQuerySchema>;
 
+/**
+ * One Data Room, folder, or file shared directly with the current user — the "Shared
+ * with me" sidebar section and Home page table. Deliberately not the full inheritance
+ * closure (ARCHITECTURE.md §4's ancestor-based resolution still applies once a resource
+ * is opened) — this is only the direct grants that give a user an entry point at all.
+ */
+export const SharedWithMeItemSchema = z.object({
+  resourceType: ShareResourceTypeSchema,
+  resourceId: z.string().uuid(),
+  name: z.string(),
+  role: ShareRoleSchema,
+  sharedByEmail: z.string().email(),
+  /** Folder id to open: the room's root folder for `DATA_ROOM`, the folder itself for
+   * `FOLDER`, `null` for `FILE` (open `resourceId` as a file instead). */
+  folderId: z.string().uuid().nullable(),
+});
+export type SharedWithMeItem = z.infer<typeof SharedWithMeItemSchema>;
+
 export const sharesContract = c.router({
   create: {
     method: 'POST',
@@ -74,6 +93,16 @@ export const sharesContract = c.router({
       404: ErrorSchema,
     },
     summary: 'Shares on a specific resource.',
+  },
+  sharedWithMe: {
+    method: 'GET',
+    path: '/shares/shared-with-me',
+    query: CursorPaginationQuerySchema,
+    responses: {
+      200: paginated(SharedWithMeItemSchema),
+      401: ErrorSchema,
+    },
+    summary: 'Data Rooms, folders, and files shared directly with the current user.',
   },
   revoke: {
     method: 'DELETE',

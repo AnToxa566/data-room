@@ -136,6 +136,34 @@ describe('Shares (e2e)', () => {
       expect(res.body.revokedAt).toBeNull();
     });
 
+    it('resolves granteeUserId immediately when the invitee already has an account', async () => {
+      const { cookie } = await createUserAndCookie('share-create-email-owner-2');
+      const invitee = await createUserAndCookie('share-create-email-invitee');
+      const room = await createRoom(cookie, 'Room');
+
+      const res = await request(app.getHttpServer())
+        .post('/api/shares')
+        .set('Cookie', cookie)
+        .send({
+          resourceType: 'DATA_ROOM',
+          resourceId: room.id,
+          mode: 'email',
+          granteeEmail: invitee.user.email.toUpperCase(),
+        })
+        .expect(201);
+
+      expect(res.body.granteeEmail).toBe(invitee.user.email.toLowerCase());
+      expect(res.body.granteeUserId).toBe(invitee.user.id);
+
+      // The invitee sees it show up right away — no login round trip required.
+      const listRes = await request(app.getHttpServer())
+        .get('/api/data-rooms')
+        .set('Cookie', invitee.cookie)
+        .expect(200);
+      const shared = listRes.body.items.find((item: { id: string }) => item.id === room.id);
+      expect(shared?.access).toBe('VIEWER');
+    });
+
     it('creates a PUBLIC share with no grantee', async () => {
       const { cookie } = await createUserAndCookie('share-create-public-owner');
       const room = await createRoom(cookie, 'Room');

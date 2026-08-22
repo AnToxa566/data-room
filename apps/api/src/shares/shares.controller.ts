@@ -28,6 +28,10 @@ export class SharesController {
         status: 200,
         body: await this.sharesService.list(user.id, query),
       }),
+      sharedWithMe: async ({ query }) => ({
+        status: 200,
+        body: await this.sharesService.listSharedWithMe(user.id, query),
+      }),
       revoke: async ({ params }) => ({
         status: 200,
         body: await this.sharesService.revoke(user.id, params.id),

@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import { Archive } from 'lucide-react';
+import { Archive, FileText, Folder as FolderIcon } from 'lucide-react';
 
 import { cn } from '@dataroom/ui/lib/utils';
 
@@ -8,8 +8,16 @@ export interface NavItem {
   name: string;
   /** Root folder to navigate into on click. `null` only mid-creation-transaction — see
    * ARCHITECTURE.md §4 — so a listed room's is effectively always set; the fallback below
-   * is defensive, not a real state this renders in practice. */
+   * is defensive, not a real state this renders in practice. Also `null` for a `'file'`
+   * item, which navigates via `fileId` instead. */
   rootFolderId: string | null;
+  /** File to navigate into on click, for a `'file'`-kind item. Mutually exclusive with
+   * `rootFolderId` — at most one of the two is set. */
+  fileId?: string | null;
+  /** Which icon to render and, indirectly, what kind of resource this is. Defaults to
+   * `'room'` — every existing "Your Data Rooms" item is a room, so call sites there don't
+   * need to change. */
+  kind?: 'room' | 'folder' | 'file';
 }
 
 interface NavSectionProps {
@@ -27,13 +35,17 @@ const itemClassName =
   'group flex w-full items-center gap-2 rounded-sm py-2 pr-2 pl-1.5 text-left text-sm outline-none hover:bg-foreground/[0.07] focus-visible:ring-3 focus-visible:ring-ring/50';
 
 /**
- * One labelled block in `AppSidebar` ("Your Data Rooms" / "Shared with me"). Each item
- * links to its room's root folder — see `folder-route.tsx`. The active item (design:
- * accent-tinted background, accent left bar, accent icon) is determined by `activeDataRoomId`,
- * not by `Link`'s own route-match tracking — a room's nav entry links to its *root* folder,
- * so `Link`'s automatic `data-status="active"` would only ever be true there, going dark the
- * moment you browse into a subfolder. Comparing ids instead keeps the room highlighted for
- * its whole subtree.
+ * One labelled block in `AppSidebar` ("Your Data Rooms" / "Shared with me"). A "Your Data
+ * Rooms" item links to its room's root folder — see `folder-route.tsx`. A "Shared with
+ * me" item links to whatever was actually shared: a Data Room's or folder's root
+ * (`rootFolderId`) or a file directly (`fileId`) — see `file-route.tsx`. The active item
+ * (design: accent-tinted background, accent left bar, accent icon) is determined by
+ * `activeDataRoomId`, not by `Link`'s own route-match tracking — a room's nav entry links
+ * to its *root* folder, so `Link`'s automatic `data-status="active"` would only ever be
+ * true there, going dark the moment you browse into a subfolder. Comparing ids instead
+ * keeps the room highlighted for its whole subtree. "Shared with me" items never match
+ * `activeDataRoomId` (they have no such id to compare) and so never render as active —
+ * a deliberate v1 trim, not a bug.
  */
 export function NavSection({ title, emptyText, items = [], activeDataRoomId }: NavSectionProps) {
   return (
@@ -53,15 +65,30 @@ export function NavSection({ title, emptyText, items = [], activeDataRoomId }: N
                 className={cn('w-0.75 shrink-0 self-stretch', isActive ? 'bg-accent' : 'bg-transparent')}
               />
             );
+            const IconComponent =
+              item.kind === 'folder' ? FolderIcon : item.kind === 'file' ? FileText : Archive;
             const icon = (
-              <Archive
+              <IconComponent
                 className={cn('size-4 shrink-0', isActive ? 'text-accent' : 'text-muted-foreground')}
                 aria-hidden="true"
               />
             );
             const className = cn(itemClassName, isActive && 'bg-accent/10');
 
-            return item.rootFolderId ? (
+            return item.fileId ? (
+              <li key={item.id}>
+                <Link
+                  to="/files/$fileId"
+                  params={{ fileId: item.fileId }}
+                  className={className}
+                  aria-current={isActive ? 'page' : undefined}
+                >
+                  {mark}
+                  {icon}
+                  <span className="truncate">{item.name}</span>
+                </Link>
+              </li>
+            ) : item.rootFolderId ? (
               <li key={item.id}>
                 <Link
                   to="/folders/$id"

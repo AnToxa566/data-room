@@ -5,6 +5,7 @@ import type { User } from '@dataroom/contracts';
 
 import { useSignOut } from '../lib/auth';
 import { useDataRoomsQuery } from '../lib/data-rooms';
+import { useSharedWithMeQuery } from '../lib/shares';
 import { NavSection } from './nav-section';
 
 interface AppSidebarProps {
@@ -24,10 +25,29 @@ export function AppSidebar({ user, activeDataRoomId }: AppSidebarProps) {
   // the Home route (routes/home-route.tsx) owns the real loading/error UI for this same
   // query; react-query dedupes the two `useDataRoomsQuery()` calls into one request.
   const dataRooms = useDataRoomsQuery();
-  const myRooms = dataRooms.data?.body.items.map((room) => ({
-    id: room.id,
-    name: room.name,
-    rootFolderId: room.rootFolderId,
+  // Only rooms this user owns — a room shared with them (`access !== 'OWNER'`) now
+  // surfaces under "Shared with me" instead (via `useSharedWithMeQuery`), not here too.
+  // See the Home route for the identical filter, applied for the identical reason.
+  const myRooms = dataRooms.data?.body.items
+    .filter((room) => room.access === 'OWNER')
+    .map((room) => ({
+      id: room.id,
+      name: room.name,
+      rootFolderId: room.rootFolderId,
+    }));
+
+  const sharedWithMe = useSharedWithMeQuery();
+  const sharedItems = sharedWithMe.data?.body.items.map((item) => ({
+    id: item.resourceId,
+    name: item.name,
+    rootFolderId: item.resourceType !== 'FILE' ? item.folderId : null,
+    fileId: item.resourceType === 'FILE' ? item.resourceId : null,
+    kind:
+      item.resourceType === 'DATA_ROOM'
+        ? ('room' as const)
+        : item.resourceType === 'FOLDER'
+          ? ('folder' as const)
+          : ('file' as const),
   }));
 
   return (
@@ -52,7 +72,11 @@ export function AppSidebar({ user, activeDataRoomId }: AppSidebarProps) {
           items={myRooms}
           activeDataRoomId={activeDataRoomId}
         />
-        <NavSection title="Shared with me" emptyText="Nothing shared with you" />
+        <NavSection
+          title="Shared with me"
+          emptyText="Nothing shared with you"
+          items={sharedItems}
+        />
       </nav>
 
       <div className="mt-auto border-t-2 border-border p-3">

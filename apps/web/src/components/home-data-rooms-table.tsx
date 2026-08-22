@@ -30,12 +30,14 @@ interface HomeDataRoomsTableProps {
  * root folder (see `folder-route.tsx`) — the rest of the row stays inert. Rename and
  * Delete are wired to their own modals below (one controlled instance each, parameterized
  * by `renameTarget`/`deleteTarget` — same "single shared dialog" shape as
- * `CreateDataRoomDialog`, just keyed to whichever row's quick action was used). Share is
- * wired the same way, but only rendered for rows this user owns: `GET /api/data-rooms`
- * mixes in rooms shared with the caller (`access: 'VIEWER'|'EDITOR'`) under this same
- * "Owned by you" heading — a pre-existing mismatch out of scope to fix here — and
- * share-management requires ownership server-side (404 otherwise), so there's no point
- * offering it on a row it can't work on.
+ * `CreateDataRoomDialog`, just keyed to whichever row's quick action was used).
+ *
+ * `rooms` is expected to already be filtered to `access === 'OWNER'` by the caller
+ * (`home-route.tsx`) — `GET /data-rooms` itself still mixes in rooms shared with the
+ * caller, but those now render under "Shared with me" (`HomeSharedWithMeTable`) instead.
+ * The `room.access === 'OWNER'` check on the Share menu item is defensive: it should
+ * always be true given the above, but share-management requires ownership server-side
+ * (404 otherwise), so it costs nothing to guard against a caller that forgets to filter.
  */
 export function HomeDataRoomsTable({ rooms }: HomeDataRoomsTableProps) {
   const [renameTarget, setRenameTarget] = useState<DataRoomListItem | null>(null);

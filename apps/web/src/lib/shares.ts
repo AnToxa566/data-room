@@ -11,6 +11,22 @@ function sharesQueryKey(resourceType: ShareResourceType, resourceId: string) {
   return ['shares', resourceType, resourceId];
 }
 
+/** Shared by every consumer of "shared with me" — the sidebar nav and the Home table both
+ * call this, and react-query dedupes identical `queryKey`s into one request (same pattern
+ * as `DATA_ROOMS_LIST_QUERY_KEY` in `lib/data-rooms.ts`). */
+export const SHARED_WITH_ME_QUERY_KEY = ['shares', 'shared-with-me'];
+
+/**
+ * Data Rooms, folders, and files shared directly with the current user — first page only
+ * (`limit` defaults to 50 server-side), same "no infinite scroll yet" scope as
+ * `useDataRoomsQuery`.
+ */
+export function useSharedWithMeQuery() {
+  return tsr.shares.sharedWithMe.useQuery({
+    queryKey: SHARED_WITH_ME_QUERY_KEY,
+  });
+}
+
 /**
  * Shares on one resource — both `EMAIL` and `PUBLIC`, active *and* revoked (soft-revoke
  * keeps the row; see ARCHITECTURE.md §8's "Revocation" decision). Callers filter

@@ -71,12 +71,13 @@ export class AuthService {
             },
           });
 
-      // Every successful login, not just the first — a share can be created for this
-      // email at any point after the account already exists. Safe to re-run: the
+      // Runs on every successful login, not just the first — covers the invitee who
+      // didn't have an account *yet* when the share was created (`SharesService.create`
+      // already resolves `granteeUserId` immediately for an email that already matches a
+      // registered user; this is the fallback for the one it can't). Safe to re-run: the
       // `granteeUserId IS NULL` guard means an already-resolved share never matches
-      // again. Case-insensitive on `granteeEmail` because that column is written by the
-      // (out-of-scope, future) share-creation endpoint and this login flow can't
-      // guarantee it was already lowercased there — see AGENTS.md.
+      // again. Case-insensitive on `granteeEmail` since this login flow can't guarantee
+      // it was already lowercased by whatever wrote it.
       await tx.share.updateMany({
         where: {
           granteeEmail: { equals: email, mode: 'insensitive' },
