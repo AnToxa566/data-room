@@ -18,9 +18,9 @@ and say so rather than working around it.
 
 ## Stack — do not substitute
 
-React 18 + Vite + TypeScript · TanStack Query/Router/Table · Tailwind · shadcn/ui + Radix ·
+React 18 + Vite + TypeScript · TanStack Query/Router · Tailwind · shadcn/ui + Radix ·
 NestJS · **ts-rest + zod** · **Prisma v7** + PostgreSQL (Supabase) · Google Cloud Storage ·
-Nx · npm · Vitest · Playwright · Storybook
+Nx · npm · Vitest · Playwright
 
 Never swap a library for an equivalent because it is more familiar. If something here
 genuinely cannot do the job, raise it — do not silently substitute.

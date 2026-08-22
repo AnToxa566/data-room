@@ -20,8 +20,8 @@ under an explicit, revocable grant.
 
 |          | URL   |
 | -------- | ----- |
-| Frontend | _TBD_ |
-| API      | _TBD_ |
+| Frontend | [`data-red-room.vercel.app`](https://data-red-room.vercel.app/) |
+| API      | [`dataroom-api-1035379269094.europe-west1.run.app`](https://dataroom-api-1035379269094.europe-west1.run.app) |
 
 ---
 
@@ -30,13 +30,13 @@ under an explicit, revocable grant.
 | Layer        | Choice                                                                                   |
 | ------------ | ---------------------------------------------------------------------------------------- |
 | Monorepo     | Nx, npm                                                                                  |
-| Frontend     | React 18, TypeScript, Vite, TanStack Query / Router / Table, Tailwind, shadcn/ui + Radix |
+| Frontend     | React 18, TypeScript, Vite, TanStack Query / Router, Tailwind, shadcn/ui + Radix |
 | Backend      | NestJS, TypeScript                                                                       |
 | API contract | ts-rest + zod — shared, single source of truth for both ends                             |
 | Database     | PostgreSQL (Supabase), Prisma v7 with the `@prisma/adapter-pg` driver adapter            |
 | Blob storage | Google Cloud Storage (private bucket, signed URLs)                                       |
 | Auth         | Google OAuth 2.0, JWT in an httpOnly cookie                                              |
-| Testing      | Vitest (unit), Playwright (e2e), Storybook (components)                                  |
+| Testing      | Vitest (unit), Playwright (e2e) (components)                                  |
 
 ---
 
@@ -45,7 +45,9 @@ under an explicit, revocable grant.
 ```
 apps/
   web          React SPA
+  web-e2e      Playwright e2e tests for web
   api          NestJS HTTP API
+  api-e2e      Jest e2e tests for api — boots the real Nest module graph in-process
 libs/
   contracts    ts-rest contracts + zod schemas — shared by web and api
   database     Prisma schema, migrations, PrismaService
@@ -180,7 +182,7 @@ npx nx run-many -t lint,test,build   # everything
 npx nx affected -t lint,test         # only what changed
 npx nx graph                         # visualize the project graph
 npx nx e2e web-e2e                   # Playwright
-npx nx storybook ui                  # component workshop
+npx nx e2e api-e2e                   # Jest, boots the API in-process
 ```
 
 ---
@@ -233,10 +235,17 @@ grantee. A single account can't exercise the "shared with me" side of any sharin
 see [ARCHITECTURE.md](./ARCHITECTURE.md)'s decision log) and `@ts-rest/react-query` for
 data fetching, with `GET /api/auth/me` as the single source of truth for who is logged in.
 
-| Path    | Screen           | Guard                                          |
-| ------- | ---------------- | ----------------------------------------------- |
-| `/`     | Landing          | Authenticated users are redirected to `/home`   |
-| `/home` | Signed-in home   | Unauthenticated users are redirected to `/`     |
+| Path              | Screen                | Guard                                                                                                          |
+| ----------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `/`               | Landing                | Authenticated users are redirected to `/home`                                                                  |
+| `/home`           | Signed-in home         | Unauthenticated users are redirected to `/` — owner-only, no anonymous story                                   |
+| `/folders/$id`    | Folder browser         | None — a folder (or a Data Room, routed via its root folder id) may be a `PUBLIC`/`EMAIL` share the API already serves anonymously; a folder the caller can't access renders a 404 empty state instead of redirecting |
+| `/files/$fileId`  | File viewer            | None, same reasoning as `/folders/$id`; an inaccessible file renders a 404 empty state instead of redirecting  |
+
+`/folders/$id` and `/files/$fileId` render for the owner, a signed-in share recipient, and
+an anonymous visitor to a `PUBLIC` share alike — the API collapses "not shared with you"
+into a `404`, so the route has no `beforeLoad` guard and lets the page itself decide
+between content and a not-found state.
 
 `VITE_API_URL` is a **relative** path (`/api`) in every environment — the SPA never calls
 the API cross-origin. Locally, `apps/web/vite.config.mts` proxies `/api` to
@@ -601,6 +610,24 @@ project's build settings (confirmed via `npx nx build @dataroom/web`; not config
 `vercel.json`, which only handles the SPA rewrite — see the root `vercel.json`).
 
 ---
+
+## Where AI was used
+
+AI was used throughout, in an **AI-driven-development** style rather than vibe-coding:
+every change was reviewed and validated by me before being accepted, not merged just
+because it happened to run in the browser.
+
+- **Architecture and repo structure.** The module boundaries, domain model, and overall
+  project layout in [ARCHITECTURE.md](./ARCHITECTURE.md) were designed with AI assistance
+  before any code was written.
+- **Iterative feature development with Claude Code.** Features were built in stages, not
+  end-to-end from the start:
+  1. API-side implementation first, iterating endpoint by endpoint.
+  2. Web-side implementation next, building the UI against the already-working API.
+  3. Later iterations combined both: small vertical slices with an API half and a Web
+     half implemented together.
+- **Tests.** At every iteration, tests (unit and e2e) were written with AI assistance
+  alongside the feature they cover, not bolted on afterward.
 
 ## Documentation
 
