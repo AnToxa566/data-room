@@ -1,0 +1,28 @@
+name: Keep Supabase Alive
+
+# Supabase free-tier projects pause after 7 days with no activity. This pings the
+# API's /api/health endpoint (a real `SELECT 1` against the DB — see
+# apps/api/src/health/health.controller.ts) every 5 days so the project is never
+# idle long enough to pause.
+
+on:
+  schedule:
+    - cron: '0 6 */5 * *' # 06:00 UTC, every 5 days
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping-health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /api/health
+        env:
+          # Set the SITE_URL repo variable (Settings → Secrets and variables →
+          # Actions → Variables) to override this default.
+          SITE_URL: ${{ vars.SITE_URL || 'https://data-red-room.vercel.app' }}
+        run: |
+          echo "Pinging ${SITE_URL}/api/health"
+          curl -sf -o /tmp/health.json -w 'HTTP %{http_code} in %{time_total}s\n' "${SITE_URL}/api/health"
+          cat /tmp/health.json
