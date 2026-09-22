@@ -1,6 +1,14 @@
 /** Name of the httpOnly cookie carrying the session JWT. */
 export const SESSION_COOKIE_NAME = 'session';
 
+/** Name of the non-httpOnly cookie set/cleared in lockstep with `SESSION_COOKIE_NAME`
+ * (same call sites, same maxAge). Carries no token — just a fixed marker — so unlike the
+ * session cookie, being JS-readable costs nothing: the frontend uses its mere presence to
+ * decide whether `GET /auth/me` is worth calling at all, skipping it entirely for a
+ * visitor who was never logged in. It is never read by any guard; `SESSION_COOKIE_NAME`
+ * via `JwtAuthGuard` remains the sole authority on whether a request is authenticated. */
+export const HAS_SESSION_COOKIE_NAME = 'has_session';
+
 /** Name of the short-lived cookie carrying the OAuth `state` CSRF nonce. Scoped to the
  * Google login handshake only — see GoogleAuthGuard. */
 export const OAUTH_STATE_COOKIE_NAME = 'oauth_state';

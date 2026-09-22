@@ -9,8 +9,8 @@ import { contract } from '@dataroom/contracts';
 import type { Env } from '../config/env.schema.js';
 
 import { toUserDto } from './user.mapper.js';
-import { SESSION_COOKIE_NAME } from './constants.js';
-import { sessionCookieOptions } from './cookie.util.js';
+import { HAS_SESSION_COOKIE_NAME, SESSION_COOKIE_NAME } from './constants.js';
+import { hasSessionCookieOptions, sessionCookieOptions } from './cookie.util.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from './types.js';
 
@@ -40,6 +40,7 @@ export class AuthContractController {
         // with respect to the token that authenticated the call: as long as it's still
         // valid, repeating this request always clears the cookie and returns 204.
         req.res?.clearCookie(SESSION_COOKIE_NAME, sessionCookieOptions(this.configService));
+        req.res?.clearCookie(HAS_SESSION_COOKIE_NAME, hasSessionCookieOptions(this.configService));
         return { status: 204, body: undefined };
       },
     });

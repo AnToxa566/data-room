@@ -26,6 +26,15 @@ export function sessionCookieOptions(
   };
 }
 
+/** Same scope (`secure`/`sameSite`/`path`/`domain`) as `sessionCookieOptions`, minus
+ * `httpOnly` — the one attribute that has to differ, since the entire point of this
+ * cookie is that the frontend can read it. Built from `sessionCookieOptions` rather than
+ * a second literal object so the two can never drift apart on anything but that one
+ * attribute. */
+export function hasSessionCookieOptions(configService: ConfigService<Env, true>): CookieOptions {
+  return { ...sessionCookieOptions(configService), httpOnly: false };
+}
+
 /** `JWT_EXPIRES_IN` ("7d", "24h", ...) converted to milliseconds for the cookie's
  * `maxAge`, so the cookie's browser-side lifetime matches the token's server-side one. */
 export function sessionCookieMaxAgeMs(configService: ConfigService<Env, true>): number {

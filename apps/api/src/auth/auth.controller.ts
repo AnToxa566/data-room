@@ -7,8 +7,13 @@ import { AuthService } from './auth.service.js';
 import { Public } from './decorators/public.decorator.js';
 import { GoogleAuthExceptionFilter } from './filters/google-auth-exception.filter.js';
 import { GoogleAuthGuard } from './guards/google-auth.guard.js';
-import { oauthReturnToCookieOptions, sessionCookieMaxAgeMs, sessionCookieOptions } from './cookie.util.js';
-import { OAUTH_RETURN_TO_COOKIE_NAME, SESSION_COOKIE_NAME } from './constants.js';
+import {
+  hasSessionCookieOptions,
+  oauthReturnToCookieOptions,
+  sessionCookieMaxAgeMs,
+  sessionCookieOptions,
+} from './cookie.util.js';
+import { HAS_SESSION_COOKIE_NAME, OAUTH_RETURN_TO_COOKIE_NAME, SESSION_COOKIE_NAME } from './constants.js';
 import { parseReturnTo } from './return-to.util.js';
 import type { GoogleProfile } from './types.js';
 
@@ -38,9 +43,16 @@ export class AuthController {
     const profile = req.user as GoogleProfile;
     const { token } = await this.authService.loginWithGoogleProfile(profile);
 
+    const maxAge = sessionCookieMaxAgeMs(this.configService);
     res.cookie(SESSION_COOKIE_NAME, token, {
       ...sessionCookieOptions(this.configService),
-      maxAge: sessionCookieMaxAgeMs(this.configService),
+      maxAge,
+    });
+    // Same maxAge as the session cookie itself, so both expire in the browser at the
+    // same instant — see HAS_SESSION_COOKIE_NAME's own comment for why this cookie exists.
+    res.cookie(HAS_SESSION_COOKIE_NAME, '1', {
+      ...hasSessionCookieOptions(this.configService),
+      maxAge,
     });
 
     const returnTo = parseReturnTo(req.cookies?.[OAUTH_RETURN_TO_COOKIE_NAME] as string | undefined);
