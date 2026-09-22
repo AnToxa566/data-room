@@ -3,3 +3,18 @@
 /* Shared design tokens + shadcn/ui theme (see libs/ui/src/styles.css) — apps/web and
    libs/ui import the same file so both use identical tokens. */
 @import '@dataroom/ui/styles.css';
+
+/* Indeterminate sliding bar for LoadingSplash (`Data Red Room.dc.html`'s `isSplash`
+   state) — app-local rather than in the shared libs/ui tokens since nothing else uses it. */
+@theme {
+  --animate-bar-slide: bar-slide 1.25s linear infinite;
+}
+
+@keyframes bar-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
+  }
+}

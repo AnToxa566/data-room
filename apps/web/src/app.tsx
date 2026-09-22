@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { RouterProvider } from '@tanstack/react-router';
 
 import { createAppRouter, type AppRouter } from './routes/router';
+import { LoadingSplash } from './components/loading-splash';
 import { useCurrentUser, type SettledAuthState } from './lib/auth';
 
 export function App() {
@@ -12,7 +13,7 @@ export function App() {
   // /home, and vice versa. By the time it does mount, `auth` is already settled, so its
   // very first route match already has the correct context.
   if (auth.status === 'loading') {
-    return <NeutralShell />;
+    return <LoadingSplash />;
   }
 
   return <SettledApp auth={auth} />;
@@ -44,18 +45,6 @@ function SettledApp({ auth }: { auth: SettledAuthState }) {
   // ref, so the swapped-in router always resolves the current URL on mount — which is
   // exactly what sends a freshly-signed-out user from /home back to /.
   return <RouterProvider key={key} router={cached.current.router} />;
-}
-
-/** Genuinely neutral — no sign-in button, no avatar — shown only while auth resolves. */
-function NeutralShell() {
-  return (
-    <div className="flex min-h-dvh flex-col bg-background text-foreground">
-      <header className="flex h-14 items-center border-b border-border px-6 sm:px-8">
-        <span className="text-sm font-semibold tracking-tight">Data Red Room</span>
-      </header>
-      <main className="flex-1" />
-    </div>
-  );
 }
 
 export default App;
